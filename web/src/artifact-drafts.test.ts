@@ -79,3 +79,34 @@ test("deleted threads cannot leave an invisible draft blocking handoff", () => {
   expect(reloaded.get("artifact_example", "feedback_deleted")).toBeNull();
   expect(reloaded.get("artifact_example", "feedback_resolved")?.body).toBe("Resolved thread reply");
 });
+
+test("a completed save cannot discard a newer note or reply draft, including edit and revert", () => {
+  const disk = storage();
+  const store = new ArtifactDraftStore(disk);
+  for (const replyTo of [undefined, "feedback_example"]) {
+    store.update("artifact_example", { body: "Submitted text" }, replyTo);
+    const submitted = store.get("artifact_example", replyTo)!;
+    store.update("artifact_example", { body: "New text" }, replyTo);
+    expect(store.clearIfCurrent("artifact_example", submitted, replyTo)).toBe(false);
+    expect(store.get("artifact_example", replyTo)?.body).toBe("New text");
+    store.update("artifact_example", { body: "Submitted text" }, replyTo);
+    expect(store.clearIfCurrent("artifact_example", submitted, replyTo)).toBe(false);
+  }
+  store.flush();
+  const reloaded = new ArtifactDraftStore(disk);
+  expect(reloaded.get("artifact_example")?.body).toBe("Submitted text");
+  expect(reloaded.get("artifact_example", "feedback_example")?.body).toBe("Submitted text");
+});
+
+test("a completed save clears its unchanged draft while preserving other draft slots", () => {
+  const store = new ArtifactDraftStore(storage());
+  store.update("artifact_example", { body: "Submitted note" });
+  const submitted = store.get("artifact_example")!;
+  store.update("artifact_example", { body: "Independent reply" }, "feedback_example");
+  expect(store.clearIfCurrent("artifact_example", submitted)).toBe(true);
+  expect(store.get("artifact_example")).toBeNull();
+  expect(store.get("artifact_example", "feedback_example")?.body).toBe("Independent reply");
+  const reply = store.get("artifact_example", "feedback_example")!;
+  expect(store.clearIfCurrent("artifact_example", reply, "feedback_example")).toBe(true);
+  store.flush();
+});

@@ -123,6 +123,13 @@ export class ArtifactDraftStore {
       this.commit(id, { ...drafts, replies });
     } else this.commit(id, { ...drafts, note: null });
   }
+  clearIfCurrent(id: string, submitted: ArtifactDraft, replyTo?: string): boolean {
+    // A save can finish after another composer has resumed this draft. Object
+    // identity also preserves edits that return the text to its submitted value.
+    if (this.get(id, replyTo) !== submitted) return false;
+    this.clear(id, replyTo);
+    return true;
+  }
   pruneReplies(id: string, feedbackIds: ReadonlySet<string>): void {
     const drafts = this.load(id);
     const entries = Object.entries(drafts.replies);

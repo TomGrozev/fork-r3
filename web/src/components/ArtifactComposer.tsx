@@ -4,7 +4,7 @@ import { createPortal, flushSync } from "react-dom";
 import { artifactTargetLabel } from "../../../shared/artifact-prompt.ts";
 import type { ArtifactDetail } from "../../../shared/artifacts.ts";
 import { artifactApi } from "../artifact-api.ts";
-import { artifactDrafts, useArtifactDraft } from "../artifact-drafts.ts";
+import { type ArtifactDraft, artifactDrafts, useArtifactDraft } from "../artifact-drafts.ts";
 import { withSavedReply } from "../artifact-feedback.ts";
 import { FeedbackCreationContext, prepareFeedbackMorph } from "../feedback-motion.ts";
 import { Button, cn } from "../ui.tsx";
@@ -33,39 +33,37 @@ export function ArtifactComposer({
   const qc = useQueryClient();
   const showCreated = useContext(FeedbackCreationContext);
   const post = useMutation({
-    mutationFn: async () => {
-      if (!draft?.body.trim() || retiredTarget) return;
-      if (replyTo) return artifactApi.reply(replyTo, { body: draft.body, context: draft.context });
-      else return artifactApi.addFeedback(artifactId, draft.body, draft.target);
+    mutationFn: async (submitted: ArtifactDraft) => {
+      if (replyTo)
+        return artifactApi.reply(replyTo, { body: submitted.body, context: submitted.context });
+      else return artifactApi.addFeedback(artifactId, submitted.body, submitted.target);
     },
-    onSuccess: async (saved) => {
+    onSuccess: async (saved, submitted) => {
       let release: (() => void) | undefined;
-      if (saved) {
-        // Do not let an older in-flight read replace the acknowledged note.
-        await qc.cancelQueries({ queryKey: ["artifact", artifactId], exact: true });
-      }
-      if (saved && "feedbackId" in saved) {
+      let cleared = false;
+      // Do not let an older in-flight read replace the acknowledged note.
+      await qc.cancelQueries({ queryKey: ["artifact", artifactId], exact: true });
+      if ("feedbackId" in saved) {
         flushSync(() => {
           qc.setQueryData<ArtifactDetail>(["artifact", artifactId], (current) =>
             current ? withSavedReply(current, saved) : current,
           );
-          artifactDrafts.clear(artifactId, replyTo);
+          cleared = artifactDrafts.clearIfCurrent(artifactId, submitted, replyTo);
         });
-      } else if (saved) {
-        prepareFeedbackMorph(formElement.current, saved.id);
+      } else {
+        const current = artifactDrafts.get(artifactId) === submitted;
+        if (current) prepareFeedbackMorph(formElement.current, saved.id);
         flushSync(() => {
-          release = showCreated?.(saved);
+          if (current) release = showCreated?.(saved);
           qc.setQueryData<ArtifactDetail>(["artifact", artifactId], (current) =>
             !current || current.feedback.some((note) => note.id === saved.id)
               ? current
               : { ...current, feedback: [...current.feedback, saved] },
           );
-          artifactDrafts.clear(artifactId);
+          cleared = artifactDrafts.clearIfCurrent(artifactId, submitted);
         });
-      } else {
-        artifactDrafts.clear(artifactId, replyTo);
       }
-      onDone?.();
+      if (cleared) onDone?.();
       void qc.invalidateQueries({ queryKey: ["artifact", artifactId] }).finally(() => release?.());
       void qc.invalidateQueries({ queryKey: ["artifacts"] });
     },
@@ -84,7 +82,7 @@ export function ArtifactComposer({
       data-reply-to={replyTo}
       onSubmit={(event) => {
         event.preventDefault();
-        if (draft?.body.trim() && !post.isPending && !retiredTarget) post.mutate();
+        if (draft?.body.trim() && !post.isPending && !retiredTarget) post.mutate(draft);
       }}
     >
       <div className="flex items-start justify-between gap-2 px-3 text-xs text-neutral-500">

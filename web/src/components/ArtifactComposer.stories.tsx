@@ -1,6 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, userEvent, within } from "storybook/test";
+import { useIsMutating } from "@tanstack/react-query";
+import { useState } from "react";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
+import { artifactApi } from "../artifact-api.ts";
 import { artifactDrafts } from "../artifact-drafts.ts";
+import { artifactFixtureFeedback } from "../artifact-fixtures.ts";
 import { ArtifactComposer } from "./ArtifactComposer.tsx";
 
 const meta = {
@@ -27,6 +31,55 @@ export const KeepDraftOnEscape: Story = {
     await userEvent.type(textbox, "Keep this draft");
     await userEvent.keyboard("{Escape}");
     await expect(textbox).toHaveValue("Keep this draft");
+  },
+};
+
+let finishPendingSave: (() => void) | undefined;
+export const PreserveDraftDuringPendingSave: Story = {
+  args: { artifactId: "artifact_pending_composer", onDone: fn() },
+  beforeEach: () => {
+    const original = artifactApi.addFeedback;
+    artifactDrafts.update("artifact_pending_composer", { body: "Submitted note" });
+    artifactApi.addFeedback = (artifactId, body, target) =>
+      new Promise((resolve) => {
+        finishPendingSave = () =>
+          resolve({ ...artifactFixtureFeedback, artifactId, body, target, replies: [] });
+      });
+    return () => {
+      finishPendingSave?.();
+      finishPendingSave = undefined;
+      artifactApi.addFeedback = original;
+      artifactDrafts.clear("artifact_pending_composer");
+    };
+  },
+  render: (args) => {
+    const [visit, setVisit] = useState(0);
+    const pending = useIsMutating();
+    return (
+      <>
+        <button type="button" onClick={() => setVisit((value) => value + 1)}>
+          Reopen composer
+        </button>
+        <button type="button" onClick={() => finishPendingSave?.()}>
+          Complete pending save
+        </button>
+        <output>{pending ? "Save pending" : "Save finished"}</output>
+        <ArtifactComposer key={visit} {...args} />
+      </>
+    );
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Add feedback" }));
+    await waitFor(() => expect(canvas.getByRole("textbox")).toBeDisabled());
+    await userEvent.click(canvas.getByRole("button", { name: "Reopen composer" }));
+    const textbox = canvas.getByRole("textbox", { name: "Feedback" });
+    await userEvent.clear(textbox);
+    await userEvent.type(textbox, "Keep this newer draft");
+    await userEvent.click(canvas.getByRole("button", { name: "Complete pending save" }));
+    await waitFor(() => expect(canvas.getByRole("status")).toHaveTextContent("Save finished"));
+    await expect(textbox).toHaveValue("Keep this newer draft");
+    await expect(args.onDone).not.toHaveBeenCalled();
   },
 };
 export const RenderedTarget: Story = {
