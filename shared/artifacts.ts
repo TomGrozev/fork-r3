@@ -335,8 +335,10 @@ export interface ArtifactNudge {
   message: string | null;
 }
 
+export type ArtifactDeliveryState = "sent" | "queued";
+
 export type ArtifactNotification =
-  | { state: "none" | "sent" | "queued" | "not_repeated" }
+  | { state: "none" | ArtifactDeliveryState | "not_repeated" }
   | { state: "failed"; error: string };
 
 export interface ArtifactLifecycleResponse {
@@ -359,6 +361,8 @@ export interface ArtifactNudgeAcknowledgment {
   actor: ArtifactActor;
   nudgeId: string;
   ok: boolean;
+  // Older relay clients omit the state and imply sent on success.
+  state?: ArtifactDeliveryState;
   error?: string;
 }
 

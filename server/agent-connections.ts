@@ -1,6 +1,7 @@
 import type {
   ArtifactActor,
   ArtifactAgentStreamEvent,
+  ArtifactDeliveryState,
   ArtifactNudge,
   ArtifactWatcher,
 } from "../shared/artifacts.ts";
@@ -14,7 +15,7 @@ import {
 } from "./artifact-validation.ts";
 
 interface Pending {
-  settle: (error?: Error) => void;
+  settle: (error?: Error, state?: ArtifactDeliveryState) => void;
 }
 interface Connection {
   registration: ArtifactWatcher;
@@ -72,17 +73,17 @@ export class AgentConnections {
       },
       cancel: () => close(),
     });
-    const push = (nudge: ArtifactNudge): Promise<void> => {
+    const push = (nudge: ArtifactNudge): Promise<ArtifactDeliveryState> => {
       if (closed) return Promise.reject(new Error("Agent connection is closed"));
       if (pending.size >= 32)
         return Promise.reject(new Error("Agent has too many unacknowledged notifications"));
       return new Promise((resolve, reject) => {
         let timer: ReturnType<typeof setTimeout>;
-        const settle = (error?: Error) => {
+        const settle = (error?: Error, state: ArtifactDeliveryState = "sent") => {
           if (!pending.delete(nudge.id)) return;
           clearTimeout(timer);
           if (error) reject(error);
-          else resolve();
+          else resolve(state);
         };
         pending.set(nudge.id, { settle });
         timer = setTimeout(
@@ -122,6 +123,8 @@ export class AgentConnections {
     const nudgeId = requireString(input.nudgeId, "nudgeId", 200);
     if (typeof input.ok !== "boolean")
       throw new ArtifactError("Acknowledgment requires an explicit delivery result");
+    const state = input.state === undefined ? "sent" : input.state;
+    if (state !== "sent" && state !== "queued") throw new ArtifactError("Invalid delivery state");
     const error = optionalText(input.error, "Delivery error", 2000);
     const connection = this.connections.get(registrationId);
     if (!connection) throw new ArtifactError("Agent connection not found", 404);
@@ -129,7 +132,7 @@ export class AgentConnections {
       throw new ArtifactError("Acknowledgment must name the connected agent session", 409);
     const item = connection.pending.get(nudgeId);
     if (!item) throw new ArtifactError("Notification is no longer awaiting acknowledgment", 404);
-    item.settle(input.ok ? undefined : new Error(error || "Local harness delivery failed"));
+    item.settle(input.ok ? undefined : new Error(error || "Local harness delivery failed"), state);
   }
 
   close(): void {

@@ -141,6 +141,39 @@ describe("publisher-side listener", () => {
     await expect(localArtifactDelivery({})).rejects.toMatchObject({ exitCode: 5 });
   });
 
+  test("Codex queue acceptance stays queued for feedback and archive notifications", async () => {
+    await storage.conversations.add(id, {
+      actor: human,
+      body: "Pending feedback",
+      target: { kind: "artifact" },
+    });
+    const ready = Promise.withResolvers<void>();
+    const listening = listenArtifactConnection(client, id, actor, {
+      ready: () => ready.resolve(),
+      deliver: async () => "queued",
+    });
+    try {
+      await ready.promise;
+      expect(await api.collaboration.submit(id)).toEqual({ state: "queued" });
+      const archived = await api.collaboration.transition(id, {
+        actor: human,
+        event: "archived",
+        operationKey: "queued-archive",
+        message: "Continue with the next iteration",
+      });
+      expect(archived.notification).toEqual({ state: "queued" });
+      expect(await listening).toBe("archived");
+      expect(requests.slice(1).map((request) => request.body)).toEqual([
+        { actor, nudgeId: expect.any(String), ok: true, state: "queued" },
+        { actor, nudgeId: expect.any(String), ok: true, state: "queued" },
+      ]);
+      expect(storage.conversations.unsent(id)).toHaveLength(1);
+    } finally {
+      api.close();
+      await listening;
+    }
+  });
+
   test("disconnecting a held connection releases presence without a harness wake", async () => {
     const ready = Promise.withResolvers<void>();
     const controller = new AbortController();

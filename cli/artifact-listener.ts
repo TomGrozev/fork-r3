@@ -9,13 +9,17 @@ import { artifactNudgeText } from "../shared/artifact-prompt.ts";
 import type {
   ArtifactActor,
   ArtifactAgentStreamEvent,
+  ArtifactDeliveryState,
+  ArtifactNudgeAcknowledgment,
   ArtifactWatcher,
 } from "../shared/artifacts.ts";
 import { readEventStream } from "../shared/event-stream.ts";
 import { ArtifactCommandError } from "./artifact-args.ts";
 import { detectListener } from "./listener.ts";
 
-export type ArtifactNudgeDelivery = (text: string) => Promise<void>;
+export type ArtifactNudgeDelivery = (
+  text: string,
+) => Promise<ArtifactDeliveryState> | Promise<void>;
 
 // All harness discovery, capability checks, and message delivery run on the
 // publisher. The server only receives the logical actor and delivery result.
@@ -31,7 +35,10 @@ export async function localArtifactDelivery(
     throw new ArtifactCommandError("The publisher cannot run codex queue; use r3 watch", 5);
   if ((await probeListener(parsed.target)) === "dead")
     throw new ArtifactCommandError("The local harness socket is unavailable; use r3 watch", 5);
-  return (text) => pushToListener(parsed.target, text);
+  return async (text) => {
+    await pushToListener(parsed.target, text);
+    return parsed.target.harness === "codex" ? "queued" : "sent";
+  };
 }
 
 export async function listenArtifactConnection(
@@ -66,8 +73,9 @@ export async function listenArtifactConnection(
       if (!registration || event.nudge.artifactId !== id)
         throw new Error("Agent stream sent an unrelated notification");
       let ok = true;
+      let state: ArtifactDeliveryState | undefined;
       try {
-        await options.deliver(artifactNudgeText(event.nudge));
+        state = (await options.deliver(artifactNudgeText(event.nudge))) ?? "sent";
       } catch {
         ok = false;
       }
@@ -79,8 +87,8 @@ export async function listenArtifactConnection(
           actor,
           nudgeId: event.nudge.id,
           ok,
-          ...(ok ? {} : { error: "Local harness delivery failed" }),
-        },
+          ...(ok ? { state } : { error: "Local harness delivery failed" }),
+        } satisfies ArtifactNudgeAcknowledgment,
       );
       if (!ok)
         throw new ArtifactCommandError("Local harness delivery failed; listener disconnected");

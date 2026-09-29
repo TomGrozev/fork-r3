@@ -44,6 +44,36 @@ async function next(
 }
 
 describe("outward agent connections", () => {
+  test("a queued acknowledgment preserves delivery state and invalid states leave it pending", async () => {
+    const { stream, registration } = connections.open(id, actor);
+    const reader = stream.getReader();
+    await next(reader);
+    const pending = collaboration.submit(id);
+    const frame = await next(reader);
+    if (frame.type !== "nudge") throw new Error("Missing submit nudge");
+    try {
+      expect(() =>
+        connections.acknowledge(registration.id, {
+          actor,
+          nudgeId: frame.nudge.id,
+          ok: true,
+          state: "failed",
+        }),
+      ).toThrow("Invalid delivery state");
+      connections.acknowledge(registration.id, {
+        actor,
+        nudgeId: frame.nudge.id,
+        ok: true,
+        state: "queued",
+      });
+      expect(await pending).toEqual({ state: "queued" });
+      expect(collaboration.watchers(id)).toEqual([registration]);
+    } finally {
+      await reader.cancel();
+      await pending;
+    }
+  });
+
   test("archive retains the captured connection through local delivery acknowledgment, then closes it", async () => {
     const { stream, registration } = connections.open(id, actor);
     const reader = stream.getReader();
