@@ -56,6 +56,17 @@ export type DocumentRenderer = {
   readonly revision?: string;
 };
 
+function decodeMarkdown(file: DecodedFile): string {
+  if (file.bytes.byteLength > PUBLICATION_LIMITS.markdownBytes) {
+    throw new ArtifactError("Markdown exceeds the rendering size limit", 413);
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(file.bytes);
+  } catch {
+    throw new ArtifactError("Markdown must contain valid UTF-8");
+  }
+}
+
 function decodeFile(value: unknown): DecodedFile {
   const file = requireObject(value, "File");
   const path = requireArtifactPath(file.path);
@@ -123,6 +134,7 @@ export function validatePublication(
     if (total > directoryLimits.totalBytes) {
       throw new ArtifactError("Publication exceeds the total size limit", 413);
     }
+    if (/\.(md|markdown)$/i.test(file.path)) decodeMarkdown(file);
     return file;
   });
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
@@ -187,15 +199,7 @@ export async function prepareFiles(
     const stored = await blobs.put(file.bytes);
     let rendered: PreparedFile["rendered"] = null;
     if (/\.(md|markdown)$/i.test(file.path)) {
-      if (file.bytes.byteLength > PUBLICATION_LIMITS.markdownBytes) {
-        throw new ArtifactError("Markdown exceeds the rendering size limit", 413);
-      }
-      let source: string;
-      try {
-        source = new TextDecoder("utf-8", { fatal: true }).decode(file.bytes);
-      } catch {
-        throw new ArtifactError("Markdown must contain valid UTF-8");
-      }
+      const source = decodeMarkdown(file);
       const declared = renderDocument.revision;
       const cached = declared ? retained?.(stored.hash, file.path, declared) : null;
       if (cached && declared) {
