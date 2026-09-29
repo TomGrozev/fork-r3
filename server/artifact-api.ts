@@ -67,7 +67,11 @@ export function createArtifactApi(
     return c.json(project);
   });
   app.delete("/api/projects/:id", (c) => {
-    artifacts.deleteProject(c.req.param("id"));
+    const id = c.req.param("id");
+    const affected = artifacts.list({ projectId: id });
+    artifacts.deleteProject(id);
+    for (const artifact of affected)
+      collaboration.broadcast({ type: "artifact-updated", artifactId: artifact.id });
     return c.json({ ok: true });
   });
   app.get("/api/themes", (c) => c.json(listThemes()));

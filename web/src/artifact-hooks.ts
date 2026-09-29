@@ -46,6 +46,8 @@ export function useArtifactEvents(): boolean {
                 void queryClient.invalidateQueries({ queryKey: [key] });
             } else {
               void queryClient.invalidateQueries({ queryKey: ["agent-sessions"] });
+              if (event.type === "artifact-updated")
+                void queryClient.invalidateQueries({ queryKey: ["artifact-projects"] });
               if (event.type === "artifact-deleted") {
                 void markdownCache.forget(event.artifactId);
                 previewSessions.forget(event.artifactId);
