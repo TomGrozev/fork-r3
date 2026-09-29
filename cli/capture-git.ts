@@ -191,6 +191,8 @@ export async function captureGitDiff(root: string, base: string, head: string): 
   const args = [
     "diff",
     "--no-relative",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
     "--no-color",
     "--no-ext-diff",
     "--no-textconv",
@@ -215,6 +217,8 @@ export async function captureGitDiff(root: string, base: string, head: string): 
         const file = await publisherGit(root, [
           "diff",
           "--no-index",
+          "--src-prefix=a/",
+          "--dst-prefix=b/",
           "--no-color",
           "--no-ext-diff",
           "--no-textconv",
