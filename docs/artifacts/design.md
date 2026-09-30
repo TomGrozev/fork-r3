@@ -705,7 +705,7 @@ not a selector, source location, or claim of reproducible dynamic page state.
 
 The composer accepts user-initiated paste and image file selection. Browser inputs
 are normalized to static PNG; WebP input is also accepted by that normalization.
-Thumbnails have Crop and Remove controls; posted images open in a modal viewer.
+Thumbnails have Edit image and Remove controls; posted images open in a modal viewer.
 The same controls serve notes, replies, message edits, floating composers, and the
 mobile sheet. Pending or failed images count as draft content and block posting
 until prepared or removed. Images do not silently replace a populated target.
@@ -717,7 +717,8 @@ or discarded references become eligible for cleanup after a 24-hour grace period
 referenced drafts are not evicted. Logout and artifact deletion revoke local image
 bytes; an epoch prevents late work from repopulating storage across tabs.
 
-HTML previews offer Capture area where current-tab Region Capture is available.
+HTML previews offer Capture area where current-tab Region Capture and still-frame
+capture are available.
 The trusted workspace opens the browser's sharing chooser, crops the tab stream
 to the preview iframe, freezes one frame, and stops every track before opening the
 crop editor. Only the selected crop enters the draft. Sharing denial, wrong-surface
@@ -730,3 +731,16 @@ Agents receive image IDs and download commands in feedback output. Fetch with
 `--attachments-dir` writes and verifies all selected immutable image bytes before
 stdout and acknowledgment. Download or output failure leaves feedback pending.
 Fetching references acknowledges handoff, not proof that a model viewed pixels.
+
+The image editor combines crop with pen, arrow, and rectangle drawings. Color and
+stroke width apply to the next drawing. Pointer input uses original image pixel
+coordinates at any displayed size; touch and mouse share the same gestures. Undo
+and redo cover completed drawings, crop changes, and Clear drawings (up to 100
+steps per editing session). A new edit discards the undone branch. Ctrl/Command Z
+and Shift Z stay inside the editor and stand down in text and numeric fields.
+
+Use image flattens drawings into the cropped PNG, with no crop mask or editing UI
+in the saved pixels. Cancel leaves the draft's original image intact. Editing a
+posted image creates a replacement attachment on message save; its earlier bytes
+remain immutable. Drawing operations are local to the open editor, not persisted
+as an editable document or sent through the preview bridge.

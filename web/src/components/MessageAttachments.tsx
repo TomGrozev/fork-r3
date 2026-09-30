@@ -158,6 +158,7 @@ export function MessageAttachments({
             {onChange && (
               <div className="mt-1 flex gap-2">
                 <Button
+                  type="button"
                   disabled={disabled || image.pending}
                   onClick={() => {
                     void imageBlob(image)
@@ -168,9 +169,10 @@ export function MessageAttachments({
                       .catch((error) => setError(error.message));
                   }}
                 >
-                  Crop
+                  Edit image
                 </Button>
                 <Button
+                  type="button"
                   disabled={disabled}
                   onClick={() => onChange((items) => items.filter((item) => item.id !== image.id))}
                 >
@@ -207,7 +209,9 @@ export function MessageAttachments({
             >
               Download
             </a>
-            <Button onClick={() => setOpened(null)}>Close</Button>
+            <Button type="button" onClick={() => setOpened(null)}>
+              Close
+            </Button>
           </div>
         </dialog>
       )}

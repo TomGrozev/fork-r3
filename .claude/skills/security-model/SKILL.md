@@ -392,7 +392,8 @@ Published HTML receives neither attachment descriptors nor bytes from `getThread
 It cannot request screen capture through the utility. Preview response and iframe
 permissions explicitly deny display capture. Parent-owned Capture area needs a
 fresh browser chooser; Region Capture must succeed for the current preview before
-any frame is read. Streams remain in the trusted parent, with audio disabled, and
+any frame is read. `ImageCapture.grabFrame()` reads a single cropped frame; no
+uncropped pixels enter a canvas. Streams remain in the trusted parent, with audio disabled, and
 stop after one frame or cancellation. Late permission results are stopped. This
 path does not use RTC, external-network consent, or the existing device relay.
 

@@ -62,7 +62,11 @@ export function PreviewScreenshot({
     const viewport = { width: node.clientWidth, height: node.clientHeight };
     // Hide detached r3 controls that would otherwise occlude the preview pixels.
     document.documentElement.dataset.r3Screenshot = "true";
-    const timer = window.setTimeout(() => controller.abort(), 60_000);
+    const timer = window.setTimeout(() => {
+      controller.abort();
+      if (operation.current === controller)
+        setNotice("Capture timed out. Try again or paste a screenshot.");
+    }, 60_000);
     try {
       const blob = await capturePreview(node, controller.signal);
       if (operation.current === controller && !controller.signal.aborted)
@@ -70,9 +74,13 @@ export function PreviewScreenshot({
     } catch (error) {
       if (operation.current === controller && !controller.signal.aborted)
         setNotice(
-          error instanceof Error
-            ? error.message
-            : "Capture cancelled. You can paste a screenshot instead.",
+          error instanceof DOMException
+            ? error.name === "NotAllowedError"
+              ? "Capture cancelled. You can paste a screenshot instead."
+              : "The browser could not capture this preview. Try again or paste a screenshot."
+            : error instanceof Error
+              ? error.message
+              : "Unable to capture this preview. You can paste a screenshot instead.",
         );
     } finally {
       clearTimeout(timer);

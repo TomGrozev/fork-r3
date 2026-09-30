@@ -128,7 +128,7 @@ export class DraftImageStore {
     try {
       db = await this.open();
     } catch {
-      if (held) return held.blob;
+      if (held && generation === this.generation && !this.suspended) return held.blob;
       throw new Error("Draft image storage is unavailable");
     }
     const tx = db.transaction(["images", "state"]);
