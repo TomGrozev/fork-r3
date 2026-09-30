@@ -262,3 +262,29 @@ Feedback status is human-controlled. Replies carry no status or resolve action;
 they release only the matching author's claim. Archive preserves unsent content
 and accepts in-flight replies, while blocking publication, new claims, and normal
 handoff. Thread originals stay readable even when a placement is unavailable.
+
+
+## Conversation images
+
+Message create/edit bodies accept `attachments`: an ordered list of up to four
+`{ base64, mediaType, capture? }` new PNG/JPEG images or `{ id }` references retained
+from that same message. Omission on edit preserves images; `[]` removes them. A
+message requires nonblank text or an image. New note/reply bodies can include an
+`operationKey`; identical retries return the existing message and changed input
+conflicts. Message image routes use a 32 MiB streamed JSON bound, while individual
+images are limited to 5 MiB and 20 megapixels. Ordinary route limits stay unchanged.
+
+`GET/HEAD /api/artifacts/:id/attachments/:image` returns authenticated immutable
+raster bytes after exact membership checks, with private no-store policy, nosniff,
+same-origin resource policy, and no CORS capability. Pending/history responses
+include the attachment manifest for the same messages represented in their text.
+Preview `getThreads()` projects conversation text without attachment descriptors.
+
+`feedback add` and `reply` accept repeatable `--attach <image>` and optional retry
+`--key`; image-only messages may omit `-m`. `feedback edit --attach` replaces the
+image list, and `--clear-attachments` removes it. `feedback image <artifact-id>
+--image <image-id> [--output <file>]` downloads bytes; omitted output writes stdout.
+`feedback fetch --attachments-dir <directory>` downloads and hash-verifies the
+snapshot's images before output/acknowledgment, reusing only matching existing
+files. Failure leaves feedback pending. The guide requires agents to open relevant
+images with their harness's image viewer before replying.

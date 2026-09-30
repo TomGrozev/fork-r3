@@ -1,7 +1,11 @@
 import { useSyncExternalStore } from "react";
 import type { ArtifactMessageContext, ArtifactTarget } from "../../shared/artifacts.ts";
+import { hasMessageContent } from "../../shared/attachments.ts";
+import { type DraftAttachment, draftImages } from "./attachment-drafts.ts";
 
 export interface ArtifactDraft {
+  attachments?: DraftAttachment[];
+  operationKey?: string;
   body: string;
   target: ArtifactTarget;
   context: ArtifactMessageContext;
@@ -25,7 +29,34 @@ const valid = (draft: ArtifactDraft | null) =>
   draft === null ||
   (typeof draft?.body === "string" &&
     typeof draft.target?.kind === "string" &&
-    draft.context !== undefined);
+    draft.context !== undefined &&
+    (draft.attachments === undefined ||
+      (Array.isArray(draft.attachments) &&
+        draft.attachments.length <= 4 &&
+        draft.attachments.every(
+          (image) =>
+            image &&
+            typeof image.id === "string" &&
+            ["image/png", "image/jpeg"].includes(image.mediaType) &&
+            [image.width, image.height, image.byteLength].every(
+              (value) => Number.isFinite(value) && value >= 0,
+            ),
+        ))));
+function recover(draft: ArtifactDraft | null): ArtifactDraft | null {
+  if (!draft?.attachments?.some((image) => image.pending)) return draft;
+  return {
+    ...draft,
+    attachments: draft.attachments.map((image) =>
+      image.pending
+        ? {
+            ...image,
+            pending: false,
+            error: "Image preparation was interrupted. Remove it and attach it again.",
+          }
+        : image,
+    ),
+  };
+}
 function parseSlotKey(key: string): [string, Slot] | null {
   if (!key.startsWith(slotPrefix)) return null;
   try {
@@ -79,7 +110,12 @@ export class ArtifactDraftStore {
           value.replies &&
           Object.values(value.replies).every((draft) => draft !== null && valid(draft))
         )
-          drafts = value;
+          drafts = {
+            note: recover(value.note),
+            replies: Object.fromEntries(
+              Object.entries(value.replies).map(([id, draft]) => [id, recover(draft)!]),
+            ),
+          };
       } else {
         const legacy = JSON.parse(this.storage?.getItem(`r3-draft-${id}`) ?? "null");
         if (legacy) {
@@ -113,7 +149,7 @@ export class ArtifactDraftStore {
         if (!slot || slot[0] !== id) continue;
         try {
           const draft = JSON.parse(this.storage!.getItem(key) ?? "null");
-          if (valid(draft)) drafts = withDraft(drafts, slot[1], draft);
+          if (valid(draft)) drafts = withDraft(drafts, slot[1], recover(draft));
         } catch {
           /* A damaged draft does not hide the other drafts. */
         }
@@ -135,21 +171,22 @@ export class ArtifactDraftStore {
   count(id: string): number {
     const drafts = this.load(id);
     return (
-      Number(!!drafts.note?.body.trim()) +
-      Object.values(drafts.replies).filter((draft) => !!draft.body.trim()).length
+      Number(hasMessageContent(drafts.note)) +
+      Object.values(drafts.replies).filter(hasMessageContent).length
     );
   }
   update(id: string, patch: Partial<ArtifactDraft>, replyTo?: string): void {
     const next = { ...(this.get(id, replyTo) ?? blank()), ...patch };
+    if (patch.operationKey === undefined) next.operationKey = undefined;
     this.commit(id, next, replyTo ?? null);
   }
   anchor(id: string, target: ArtifactTarget): boolean {
-    if (this.get(id)?.body.trim()) return false;
+    if (hasMessageContent(this.get(id))) return false;
     this.update(id, { target, imported: false });
     return true;
   }
   beginReply(id: string, replyTo: string, context: ArtifactMessageContext): void {
-    if (this.get(id, replyTo)?.body.trim()) return;
+    if (hasMessageContent(this.get(id, replyTo))) return;
     this.update(id, { context }, replyTo);
   }
   clear(id: string, replyTo?: string): void {
@@ -242,7 +279,7 @@ export const useArtifactDraft = (id: string, replyTo?: string) =>
 export const useHasArtifactDraft = (id: string) =>
   useSyncExternalStore(artifactDrafts.subscribe, () => artifactDrafts.has(id));
 export const useHasArtifactNote = (id: string) =>
-  useSyncExternalStore(artifactDrafts.subscribe, () => !!artifactDrafts.get(id)?.body.trim());
+  useSyncExternalStore(artifactDrafts.subscribe, () => hasMessageContent(artifactDrafts.get(id)));
 export const useArtifactNoteOpen = (id: string) =>
   useSyncExternalStore(artifactDrafts.subscribe, () => artifactDrafts.get(id) !== null);
 export const useArtifactDraftCount = (id: string) =>
@@ -256,3 +293,19 @@ if (typeof window !== "undefined") {
     if (document.hidden) artifactDrafts.flush();
   });
 }
+
+if (typeof window !== "undefined")
+  window.setTimeout(() => {
+    const referenced = new Set<string>();
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)!;
+        if (!key.startsWith(slotPrefix)) continue;
+        const draft = JSON.parse(localStorage.getItem(key) ?? "null") as ArtifactDraft | null;
+        for (const image of draft?.attachments ?? []) referenced.add(image.id);
+      }
+      void draftImages.sweep(referenced);
+    } catch {
+      /* Without readable draft references, retain the binary drafts. */
+    }
+  }, 1000);

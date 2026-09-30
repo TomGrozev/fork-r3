@@ -12,15 +12,24 @@ import type {
   Representation,
 } from "../shared/artifacts.ts";
 import { hasUnsentArtifactFeedback } from "../shared/artifacts.ts";
+import type { PreparedAttachment } from "./artifact-attachments.ts";
 import {
   ArtifactTargets,
   type TargetColumns,
   targetColumns,
   targetFromColumns,
 } from "./artifact-targets.ts";
-import { ArtifactError, requireObject, requireString } from "./artifact-validation.ts";
+import { ArtifactError, requireObject } from "./artifact-validation.ts";
 import type { ArtifactStore } from "./artifacts.ts";
 import { nowIso } from "./ids.ts";
+
+function messageBody(value: unknown, images: number): string {
+  if (typeof value !== "string" || value.length > 1024 * 1024 || (!value.trim() && !images))
+    throw new ArtifactError(
+      "A message needs text or an image (text is limited to 1048576 characters)",
+    );
+  return value;
+}
 
 type AuthoredRow = { author: "human" | "agent"; agent_session_id: string | null };
 
@@ -125,6 +134,7 @@ export class ArtifactConversations {
       artifactId: row.artifact_id,
       author: authorFromRow(row),
       body: row.body,
+      attachments: this.artifacts.attachments.list({ feedbackId: id }),
       status: row.status,
       target: targetFromColumns(row),
       legacy: row.legacy_anchor_json === null ? null : JSON.parse(row.legacy_anchor_json),
@@ -137,7 +147,7 @@ export class ArtifactConversations {
           "SELECT * FROM replies WHERE feedback_id = ? ORDER BY created_at, rowid",
         )
         .all(id)
-        .map(replyFromRow),
+        .map((row) => this.reply(row.id)),
       claim: this.db
         .query<ArtifactClaim, [string, string]>(`SELECT feedback_id AS feedbackId,
         agent_session_id AS sessionId, claimed_at AS claimedAt, renewed_at AS renewedAt, expires_at AS expiresAt
@@ -159,65 +169,91 @@ export class ArtifactConversations {
   reply(id: string): ArtifactReply {
     const row = this.db.query<ReplyRow, [string]>("SELECT * FROM replies WHERE id = ?").get(id);
     if (!row) throw new ArtifactError("Reply not found", 404);
-    return replyFromRow(row);
+    return { ...replyFromRow(row), attachments: this.artifacts.attachments.list({ replyId: id }) };
   }
 
   async add(id: string, value: unknown): Promise<ArtifactFeedback> {
     const input = requireObject(value, "Feedback");
     const author = this.artifacts.validateActor(input.actor);
-    const body = requireString(input.body, "Feedback body");
+
     const target = targetColumns(await this.targets.target(id, input.target));
-    return this.db
-      .transaction(() => {
-        const artifact = this.artifacts.get(id);
-        const time = this.clock();
-        const feedbackId = `feedback_${randomUUID().replaceAll("-", "")}`;
-        this.db
-          .query(`INSERT INTO feedback(id, artifact_id, artifact_kind, author, agent_session_id,
+    return this.artifacts.attachments.preparing(id, input.attachments, (images) =>
+      this.db
+        .transaction(() => {
+          const operation = this.artifacts.attachments.operation(id, input, "feedback", id);
+          if (operation.replay) return this.get(operation.replay);
+          const body = messageBody(input.body, images.length);
+          const artifact = this.artifacts.get(id);
+          const time = this.clock();
+          const feedbackId = `feedback_${randomUUID().replaceAll("-", "")}`;
+          this.db
+            .query(`INSERT INTO feedback(id, artifact_id, artifact_kind, author, agent_session_id,
         body, target_kind, target_version_seq, target_path, locator_json, created_at, updated_at, sent_at, ever_delivered)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-          .run(
-            feedbackId,
-            id,
-            artifact.kind,
-            author.role,
-            author.sessionId,
-            body,
-            target.target_kind,
-            target.target_version_seq,
-            target.target_path,
-            target.locator_json,
-            time,
-            time,
-            author.role === "agent" ? time : null,
-            author.role === "agent" ? 1 : 0,
-          );
-        this.touch(id, time);
-        return this.get(feedbackId);
-      })
-      .immediate();
+            .run(
+              feedbackId,
+              id,
+              artifact.kind,
+              author.role,
+              author.sessionId,
+              body,
+              target.target_kind,
+              target.target_version_seq,
+              target.target_path,
+              target.locator_json,
+              time,
+              time,
+              author.role === "agent" ? time : null,
+              author.role === "agent" ? 1 : 0,
+            );
+          this.artifacts.attachments.replace(id, { feedbackId }, images);
+          operation.save({ feedbackId });
+          this.touch(id, time);
+          return this.get(feedbackId);
+        })
+        .immediate(),
+    );
   }
 
-  edit(id: string, value: unknown): ArtifactFeedback {
+  async update(id: string, value: unknown): Promise<ArtifactFeedback> {
     const input = requireObject(value, "Feedback edit");
+    if (input.attachments === undefined) return this.edit(id, input);
+    const row = this.row(id);
+    this.editable(this.artifacts.validateActor(input.actor), row);
+    return this.artifacts.attachments.preparing(row.artifact_id, input.attachments, (images) =>
+      this.edit(id, input, images),
+    );
+  }
+
+  edit(id: string, value: unknown, images?: PreparedAttachment[]): ArtifactFeedback {
+    const input = requireObject(value, "Feedback edit");
+    if (input.attachments !== undefined && !images)
+      throw new ArtifactError("Image edits require prepared attachments");
     const author = this.artifacts.validateActor(input.actor);
     if (input.target !== undefined)
       throw new ArtifactError("Original targets are immutable; record a placement");
     return this.db
       .transaction(() => {
         const row = this.row(id);
-        if (input.body !== undefined) this.editable(author, row);
-        const body =
-          input.body === undefined ? row.body : requireString(input.body, "Feedback body");
+        if (input.body !== undefined || images) this.editable(author, row);
+        const body = messageBody(
+          input.body === undefined ? row.body : input.body,
+          images?.length ?? this.artifacts.attachments.list({ feedbackId: id }).length,
+        );
         const status = input.status === undefined ? row.status : input.status;
         if (status !== "open" && status !== "resolved")
           throw new ArtifactError("Invalid feedback status");
         if (input.status !== undefined && author.role !== "human")
           throw new ArtifactError("Feedback status is controlled by the human owner");
-        if (body === row.body && status === row.status) return this.get(id);
+        const imagesChanged = images
+          ? this.artifacts.attachments.replace(row.artifact_id, { feedbackId: id }, images)
+          : false;
+        if (body === row.body && status === row.status && !imagesChanged) return this.get(id);
         const time = this.clock();
         const sentAt =
-          row.author === "human" && status === "open" && body !== row.body ? null : row.sent_at;
+          row.author === "human" && status === "open" && (body !== row.body || imagesChanged)
+            ? null
+            : row.sent_at;
         const statusUnsent = row.status_unsent || (status !== row.status && row.ever_delivered);
         this.db
           .query(
@@ -247,7 +283,7 @@ export class ArtifactConversations {
   async addReply(id: string, value: unknown): Promise<ArtifactReply> {
     const input = requireObject(value, "Reply");
     const author = this.artifacts.validateActor(input.actor);
-    const body = requireString(input.body, "Reply body");
+
     const original = this.row(id);
     const context = this.targets.context(original.artifact_id, input.context);
     const target =
@@ -255,47 +291,73 @@ export class ArtifactConversations {
     if (target?.kind === "artifact" || target?.kind === "artifact_summary")
       throw new ArtifactError("A fix target must name a published version");
     const columns = target === null ? null : targetColumns(target);
-    return this.db
-      .transaction(() => {
-        const feedback = this.row(id);
-        const time = this.clock();
-        const replyId = `reply_${randomUUID().replaceAll("-", "")}`;
-        this.db
-          .query(`INSERT INTO replies(id, feedback_id, artifact_id, artifact_kind, author, agent_session_id,
+    return this.artifacts.attachments.preparing(original.artifact_id, input.attachments, (images) =>
+      this.db
+        .transaction(() => {
+          const feedback = this.row(id);
+          const operation = this.artifacts.attachments.operation(
+            feedback.artifact_id,
+            input,
+            "reply",
+            id,
+          );
+          if (operation.replay) return this.reply(operation.replay);
+          const body = messageBody(input.body, images.length);
+          const time = this.clock();
+          const replyId = `reply_${randomUUID().replaceAll("-", "")}`;
+          this.db
+            .query(`INSERT INTO replies(id, feedback_id, artifact_id, artifact_kind, author, agent_session_id,
         body, context_version_seq, context_representation, target_kind, target_version_seq,
         target_path, locator_json, created_at, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-          .run(
-            replyId,
-            id,
-            feedback.artifact_id,
-            feedback.artifact_kind,
-            author.role,
-            author.sessionId,
-            body,
-            context.versionSeq,
-            context.representation,
-            columns?.target_kind ?? null,
-            columns?.target_version_seq ?? null,
-            columns?.target_path ?? null,
-            columns?.locator_json ?? null,
-            time,
-            author.role === "agent" ? time : null,
-          );
-        if (author.role === "agent") {
-          this.db
-            .query("DELETE FROM feedback_claims WHERE feedback_id = ? AND agent_session_id = ?")
-            .run(id, author.sessionId);
-        }
-        this.touch(feedback.artifact_id, time);
-        return this.reply(replyId);
-      })
-      .immediate();
+            .run(
+              replyId,
+              id,
+              feedback.artifact_id,
+              feedback.artifact_kind,
+              author.role,
+              author.sessionId,
+              body,
+              context.versionSeq,
+              context.representation,
+              columns?.target_kind ?? null,
+              columns?.target_version_seq ?? null,
+              columns?.target_path ?? null,
+              columns?.locator_json ?? null,
+              time,
+              author.role === "agent" ? time : null,
+            );
+          if (author.role === "agent") {
+            this.db
+              .query("DELETE FROM feedback_claims WHERE feedback_id = ? AND agent_session_id = ?")
+              .run(id, author.sessionId);
+          }
+          this.artifacts.attachments.replace(feedback.artifact_id, { replyId }, images);
+          operation.save({ replyId });
+          this.touch(feedback.artifact_id, time);
+          return this.reply(replyId);
+        })
+        .immediate(),
+    );
   }
 
-  editReply(id: string, value: unknown): ArtifactReply {
+  async updateReply(id: string, value: unknown): Promise<ArtifactReply> {
+    const input = requireObject(value, "Reply edit");
+    if (input.attachments === undefined) return this.editReply(id, input);
+    const reply = this.reply(id);
+    this.editable(this.artifacts.validateActor(input.actor), {
+      author: reply.author.role,
+      agent_session_id: reply.author.sessionId,
+    });
+    return this.artifacts.attachments.preparing(reply.artifactId, input.attachments, (images) =>
+      this.editReply(id, input, images),
+    );
+  }
+
+  editReply(id: string, value: unknown, images?: PreparedAttachment[]): ArtifactReply {
     const input = requireObject(value, "Reply edit");
     const author = this.artifacts.validateActor(input.actor);
-    const body = requireString(input.body, "Reply body");
+    if (input.attachments !== undefined && !images)
+      throw new ArtifactError("Image edits require prepared attachments");
     if (input.target !== undefined || input.context !== undefined)
       throw new ArtifactError("Reply references are immutable");
     return this.db
@@ -303,7 +365,14 @@ export class ArtifactConversations {
         const row = this.db.query<ReplyRow, [string]>("SELECT * FROM replies WHERE id = ?").get(id);
         if (!row) throw new ArtifactError("Reply not found", 404);
         this.editable(author, row);
-        if (body === row.body) return replyFromRow(row);
+        const body = messageBody(
+          input.body === undefined ? row.body : input.body,
+          images?.length ?? this.artifacts.attachments.list({ replyId: id }).length,
+        );
+        const imagesChanged = images
+          ? this.artifacts.attachments.replace(row.artifact_id, { replyId: id }, images)
+          : false;
+        if (body === row.body && !imagesChanged) return this.reply(id);
         this.db
           .query("UPDATE replies SET body = ?, sent_at = ? WHERE id = ?")
           .run(body, row.author === "human" ? null : row.sent_at, id);

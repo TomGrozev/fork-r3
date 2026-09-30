@@ -202,3 +202,20 @@ binary embedding, CSS compilation, demo aliases, and Pages layout.
 Workspace and component stories expose desktop and mobile states for visual review.
 `ReopenDuringExit` exercises focus while an earlier composer is still leaving;
 `SettingsFromMenu` and `KeyboardDismiss` cover menu placement and focus restoration.
+
+
+## Feedback images
+
+`bun test server/artifact-attachments.test.ts` covers image-only messages/replies,
+immutable byte retrieval, shared-blob GC, atomic failures, scoped membership,
+retry keys, stale acknowledgment rejection, version-6 upgrade, and malformed input.
+CLI and draft-store tests cover download-before-acknowledgment, failed output paths,
+image-only drafts, and retained native targets. `ImageEditor` and `ArtifactComposer`
+stories cover crop controls and image drafts in both themes.
+
+`R3_TEST_BROWSER=<chromium> bun scripts/test-feedback-images.ts` uses isolated
+storage and a fresh browser profile. It covers paste, reload, failed posting/retry,
+image-only reply, real current-tab capture with the browser's test chooser flag,
+cropping, stopped screen tracks, preview bridge exclusion, and narrow layout. The
+test accepts the existing compatibility warning if this browser fails network
+verification; it does not weaken the preview policy to make screenshots work.

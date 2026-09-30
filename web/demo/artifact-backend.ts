@@ -1,5 +1,5 @@
 import { ArtifactApiError } from "../../shared/artifact-client.ts";
-import { buildArtifactPrompt } from "../../shared/artifact-prompt.ts";
+import { buildArtifactPrompt, feedbackAttachments } from "../../shared/artifact-prompt.ts";
 import type {
   ArtifactFeedback,
   ArtifactFeedbackSnapshot,
@@ -9,6 +9,7 @@ import type {
   ArtifactTarget,
 } from "../../shared/artifacts.ts";
 import { hasUnsentArtifactFeedback, isUnhandledArtifactFeedback } from "../../shared/artifacts.ts";
+import type { ArtifactAttachment } from "../../shared/attachments.ts";
 import { ARTIFACT_DEMO_SEED } from "./artifact-fixtures.gen.ts";
 import {
   type ArtifactDemoSeed,
@@ -237,8 +238,13 @@ export class ArtifactDemoBackend {
       }
     }
   }
-  addFeedback(id: string, body: string, target: ArtifactTarget): ArtifactFeedback {
-    if (!body.trim()) fail("Feedback requires a message");
+  addFeedback(
+    id: string,
+    body: string,
+    target: ArtifactTarget,
+    attachments: ArtifactAttachment[] = [],
+  ): ArtifactFeedback {
+    if (!body.trim() && !attachments.length) fail("Feedback needs text or an image");
     this.target(id, target);
     const time = now();
     const note: ArtifactFeedback = {
@@ -247,6 +253,7 @@ export class ArtifactDemoBackend {
       author: human,
       body,
       status: "open",
+      attachments,
       target: structuredClone(target),
       legacy: null,
       createdAt: time,
@@ -279,7 +286,12 @@ export class ArtifactDemoBackend {
     const expectedFingerprint = Array.from(new Uint8Array(digest), (byte) =>
       byte.toString(16).padStart(2, "0"),
     ).join("");
-    return { text, itemCount: selected.length, acknowledgment: { feedback, expectedFingerprint } };
+    return {
+      text,
+      itemCount: selected.length,
+      attachments: feedbackAttachments(selected, true),
+      acknowledgment: { feedback, expectedFingerprint },
+    };
   }
   handoff(id: string, feedback?: string[]) {
     const artifact = this.get(id);

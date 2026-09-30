@@ -1,7 +1,8 @@
 import type { Database } from "bun:sqlite";
+import { ATTACHMENT_SCHEMA } from "./artifact-attachments.ts";
 import { ARTIFACT_LISTENER_SCHEMA } from "./artifact-listeners.ts";
 
-export const ARTIFACT_SCHEMA_VERSION = 6;
+export const ARTIFACT_SCHEMA_VERSION = 7;
 
 export const PROJECT_REMOTE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS project_remotes (
@@ -470,4 +471,5 @@ END;
 export function createArtifactTables(db: Database): void {
   db.exec(ARTIFACT_SCHEMA);
   db.exec(ARTIFACT_LISTENER_SCHEMA);
+  db.exec(ATTACHMENT_SCHEMA);
 }

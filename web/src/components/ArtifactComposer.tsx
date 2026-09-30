@@ -3,11 +3,18 @@ import { type ReactNode, useContext, useRef } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { artifactTargetLabel } from "../../../shared/artifact-prompt.ts";
 import type { ArtifactDetail } from "../../../shared/artifacts.ts";
+import { hasMessageContent } from "../../../shared/attachments.ts";
 import { artifactApi } from "../artifact-api.ts";
 import { type ArtifactDraft, artifactDrafts, useArtifactDraft } from "../artifact-drafts.ts";
 import { withSavedReply } from "../artifact-feedback.ts";
 import { FeedbackCreationContext, prepareFeedbackMorph } from "../feedback-motion.ts";
 import { Button, cn } from "../ui.tsx";
+import {
+  type EditableImage,
+  editableImageInputs,
+  MessageAttachments,
+  useAttachmentInput,
+} from "./MessageAttachments.tsx";
 import { MessageInput } from "./MessageInput.tsx";
 
 // Draft subscription and mutation live with the textarea. Typing does not
@@ -34,9 +41,19 @@ export function ArtifactComposer({
   const showCreated = useContext(FeedbackCreationContext);
   const post = useMutation({
     mutationFn: async (submitted: ArtifactDraft) => {
+      const attachments = await editableImageInputs(submitted.attachments ?? []);
       if (replyTo)
-        return artifactApi.reply(replyTo, { body: submitted.body, context: submitted.context });
-      else return artifactApi.addFeedback(artifactId, submitted.body, submitted.target);
+        return artifactApi.reply(replyTo, {
+          body: submitted.body,
+          context: submitted.context,
+          attachments,
+          operationKey: submitted.operationKey,
+        });
+      else
+        return artifactApi.addFeedback(artifactId, submitted.body, submitted.target, {
+          attachments,
+          operationKey: submitted.operationKey,
+        });
     },
     onSuccess: async (saved, submitted) => {
       let release: (() => void) | undefined;
@@ -68,6 +85,20 @@ export function ArtifactComposer({
       void qc.invalidateQueries({ queryKey: ["artifacts"] });
     },
   });
+  const changeImages = (change: (images: EditableImage[]) => EditableImage[]) => {
+    const held = artifactDrafts.get(artifactId, replyTo);
+    const before = held?.attachments ?? [];
+    const after = change(before);
+    if (before.length === after.length && before.every((image, i) => image === after[i])) return;
+    artifactDrafts.update(artifactId, { attachments: after }, replyTo);
+    artifactDrafts.flush();
+  };
+  const attachments = useAttachmentInput(
+    artifactId,
+    draft?.attachments ?? [],
+    changeImages,
+    post.isPending,
+  );
   const context = draft?.context;
   const form = (
     <form
@@ -80,9 +111,22 @@ export function ArtifactComposer({
       )}
       data-artifact-composer={artifactId}
       data-reply-to={replyTo}
+      onPaste={attachments.onPaste}
       onSubmit={(event) => {
         event.preventDefault();
-        if (draft?.body.trim() && !post.isPending && !retiredTarget) post.mutate(draft);
+        if (
+          draft &&
+          hasMessageContent(draft) &&
+          !attachments.unfinished &&
+          !post.isPending &&
+          !retiredTarget
+        ) {
+          if (!draft.operationKey) {
+            artifactDrafts.update(artifactId, { operationKey: crypto.randomUUID() }, replyTo);
+            artifactDrafts.flush();
+          }
+          post.mutate(artifactDrafts.get(artifactId, replyTo)!);
+        }
       }}
     >
       <div className="flex items-start justify-between gap-2 px-3 text-xs text-neutral-500">
@@ -149,13 +193,26 @@ export function ArtifactComposer({
           } else if (event.key === "Escape" && !event.nativeEvent.isComposing) {
             event.preventDefault();
             event.stopPropagation();
-            if (!draft?.body.trim()) {
+            if (!hasMessageContent(draft)) {
               artifactDrafts.clear(artifactId, replyTo);
               onDone?.();
             } else event.currentTarget.blur();
           }
         }}
       />
+      <div className="px-3">
+        <MessageAttachments
+          artifactId={artifactId}
+          images={draft?.attachments}
+          onChange={changeImages}
+          disabled={post.isPending}
+        />
+      </div>
+      {attachments.notice && (
+        <p role="status" className="px-3 text-xs text-amber-700">
+          {attachments.notice}
+        </p>
+      )}
       {post.error && (
         <p role="alert" className="text-xs text-red-600 dark:text-red-400">
           {post.error.message}
@@ -163,6 +220,7 @@ export function ArtifactComposer({
       )}
       <div className="flex items-center gap-2 px-3">
         {leadingActions}
+        {attachments.controls}
         <span className="flex-1" />
         <Button
           type="button"
@@ -172,12 +230,14 @@ export function ArtifactComposer({
             onDone?.();
           }}
         >
-          {draft?.body ? "Discard" : "Cancel"}
+          {hasMessageContent(draft) ? "Discard" : "Cancel"}
         </Button>
         <Button
           type="submit"
           variant="primary"
-          disabled={!draft?.body.trim() || post.isPending || retiredTarget}
+          disabled={
+            !hasMessageContent(draft) || attachments.unfinished || post.isPending || retiredTarget
+          }
         >
           {post.isPending ? "Posting…" : replyTo ? "Reply" : "Add feedback"}
         </Button>

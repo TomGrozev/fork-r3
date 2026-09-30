@@ -5,6 +5,8 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { artifactApi } from "../artifact-api.ts";
 import { artifactDrafts } from "../artifact-drafts.ts";
 import { artifactFixtureFeedback } from "../artifact-fixtures.ts";
+import { prepareDraftImage } from "../attachment-drafts.ts";
+import { exampleImage } from "../image-fixture.ts";
 import { ArtifactComposer } from "./ArtifactComposer.tsx";
 
 const meta = {
@@ -23,6 +25,19 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 export const General: Story = { args: { artifactId: "artifact_general_composer" } };
 export const GeneralDark: Story = { ...General, globals: { theme: "dark" } };
+export const ImageOnly: Story = {
+  args: { artifactId: "artifact_image_composer" },
+  loaders: [
+    async () => {
+      const { attachment } = await prepareDraftImage(
+        "artifact_image_composer",
+        await exampleImage(),
+      );
+      artifactDrafts.update("artifact_image_composer", { attachments: [attachment], body: "" });
+    },
+  ],
+};
+export const ImageOnlyDark: Story = { ...ImageOnly, globals: { theme: "dark" } };
 export const KeepDraftOnEscape: Story = {
   args: { artifactId: "artifact_persisted_composer" },
   play: async ({ canvasElement }) => {

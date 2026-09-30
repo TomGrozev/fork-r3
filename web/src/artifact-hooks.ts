@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { artifactApi, artifactEventStream } from "./artifact-api.ts";
+import { draftImages } from "./attachment-drafts.ts";
 import { markdownCache } from "./markdown-cache.ts";
 import { previewSessions } from "./preview-sessions.ts";
 import { readingPositions } from "./reading-position.ts";
@@ -50,6 +51,7 @@ export function useArtifactEvents(): boolean {
                 void queryClient.invalidateQueries({ queryKey: ["artifact-projects"] });
               if (event.type === "artifact-deleted") {
                 void markdownCache.forget(event.artifactId);
+                void draftImages.clear(event.artifactId);
                 previewSessions.forget(event.artifactId);
                 readingPositions.forget(event.artifactId);
                 for (const key of ["artifact-files", "artifact-source", "artifact-diff"])

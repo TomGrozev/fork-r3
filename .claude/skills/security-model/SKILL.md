@@ -375,3 +375,29 @@ to be caught. Cooldown covers **version updates only** — Dependabot *security*
 updates bypass it so a real fix isn't held back. **Never disable or lower the
 cooldown to land a dependency**; if a needed version is younger than 21 days, stop
 and say so.
+
+
+## Feedback image isolation
+
+Image reads use application authentication and artifact/message membership, never
+a blob hash capability or the preview resource allowlist. Raster responses deny
+sniffing, cross-origin embedding, executable navigation, and persistent HTTP
+caching. PNG validation checks chunks, checksums, dimensions, bounded decompression,
+and scanline filters; JPEG validation checks marker structure and dimensions.
+Only static PNG/JPEG are stored. Ancillary identifying metadata is removed; the
+browser normalizes image uploads before sending. These are bounded format checks,
+not a replacement for the browser's raster decoder.
+
+Published HTML receives neither attachment descriptors nor bytes from `getThreads`.
+It cannot request screen capture through the utility. Preview response and iframe
+permissions explicitly deny display capture. Parent-owned Capture area needs a
+fresh browser chooser; Region Capture must succeed for the current preview before
+any frame is read. Streams remain in the trusted parent, with audio disabled, and
+stop after one frame or cancellation. Late permission results are stopped. This
+path does not use RTC, external-network consent, or the existing device relay.
+
+Draft image bytes stay in IndexedDB with bounded per-image size. Authenticated boot
+resumes access; logout suspends/clears it across tabs. Stored generations reject
+writes and bootstrap completions started before revocation. Deletion also clears
+that artifact's draft images. Browser-profile storage is a local copy, not encrypted
+or remotely erasable while offline.

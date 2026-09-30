@@ -23,6 +23,7 @@ import {
   type ArtifactTarget,
   hasUnsentArtifactFeedback,
 } from "../../../shared/artifacts.ts";
+import { hasMessageContent } from "../../../shared/attachments.ts";
 import { artifactApi } from "../artifact-api.ts";
 import { artifactDrafts, useArtifactNoteOpen } from "../artifact-drafts.ts";
 import { activeArtifactFeedback, artifactNeedsAttention } from "../artifact-feedback.ts";
@@ -48,6 +49,12 @@ import { AgentName } from "./AgentName.tsx";
 import { ArtifactComposer } from "./ArtifactComposer.tsx";
 import { ArtifactHandoffButton } from "./ArtifactHandoffButton.tsx";
 import { MessageProse, QuoteBubble, useQuoteBubble } from "./Message.tsx";
+import {
+  type EditableImage,
+  editableImageInputs,
+  MessageAttachments,
+  useAttachmentInput,
+} from "./MessageAttachments.tsx";
 import { MessageInput } from "./MessageInput.tsx";
 
 export type ArtifactRefJump = (reference: MessageRef, context: ArtifactMessageContext) => void;
@@ -163,7 +170,11 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
     if (active) element.current?.scrollIntoView({ block: "nearest" });
   }, [active]);
   const [replying, setReplying] = useState(false);
-  const [editing, setEditing] = useState<{ replyId?: string; body: string } | null>(null);
+  const [editing, setEditing] = useState<{
+    replyId?: string;
+    body: string;
+    attachments: EditableImage[];
+  } | null>(null);
   const isEditing = editing !== null;
   useEffect(() => {
     if (isEditing)
@@ -204,14 +215,23 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
   const edit = useMutation({
     mutationFn: async () => {
       if (!editing) return;
-      if (editing.replyId) await artifactApi.editReply(editing.replyId, editing.body);
-      else await artifactApi.editFeedback(feedback.id, { body: editing.body });
+      const attachments = await editableImageInputs(editing.attachments);
+      if (editing.replyId) await artifactApi.editReply(editing.replyId, editing.body, attachments);
+      else await artifactApi.editFeedback(feedback.id, { body: editing.body, attachments });
     },
     onSuccess: () => {
       setEditing(null);
       void refresh();
     },
   });
+  const changeImages = (change: (images: EditableImage[]) => EditableImage[]) =>
+    setEditing((held) => (held ? { ...held, attachments: change(held.attachments) } : null));
+  const attachmentInput = useAttachmentInput(
+    feedback.artifactId,
+    editing?.attachments ?? [],
+    changeImages,
+    edit.isPending,
+  );
   const status = useFeedbackStatus(feedback);
   const remove = useMutation({
     mutationFn: () => artifactApi.deleteFeedback(feedback.id),
@@ -271,8 +291,12 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
               onClick={() => {
                 setEditing(
                   lastReply
-                    ? { replyId: lastReply.id, body: lastReply.body }
-                    : { body: feedback.body },
+                    ? {
+                        replyId: lastReply.id,
+                        body: lastReply.body,
+                        attachments: lastReply.attachments ?? [],
+                      }
+                    : { body: feedback.body, attachments: feedback.attachments ?? [] },
                 );
                 setMenuOpen(false);
                 setReplying(false);
@@ -298,10 +322,12 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
   const editForm = editing && (
     <form
       data-edit-message
+      onPaste={attachmentInput.onPaste}
       className="-mx-3 flex flex-col gap-2 py-3"
       onSubmit={(event) => {
         event.preventDefault();
-        if (editing.body.trim() && !edit.isPending) edit.mutate();
+        if (hasMessageContent(editing) && !attachmentInput.unfinished && !edit.isPending)
+          edit.mutate();
       }}
     >
       <MessageInput
@@ -320,11 +346,29 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
           }
         }}
       />
+      <div className="px-3">
+        <MessageAttachments
+          artifactId={feedback.artifactId}
+          images={editing.attachments}
+          onChange={changeImages}
+          disabled={edit.isPending}
+        />
+      </div>
+      {attachmentInput.notice && (
+        <p role="status" className="px-3 text-xs text-amber-700">
+          {attachmentInput.notice}
+        </p>
+      )}
       <div className="flex justify-end gap-2 px-3">
+        {attachmentInput.controls}
         <Button type="button" disabled={edit.isPending} onClick={() => setEditing(null)}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary" disabled={!editing.body.trim() || edit.isPending}>
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={!hasMessageContent(editing) || attachmentInput.unfinished || edit.isPending}
+        >
           {edit.isPending ? "Saving…" : "Save"}
         </Button>
       </div>
@@ -421,6 +465,9 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
             onJumpRef={(ref) => onJumpRef(ref, originalContext)}
           />
         )}
+        {!(editing && !editing.replyId) && (
+          <MessageAttachments artifactId={feedback.artifactId} images={feedback.attachments} />
+        )}
       </div>
       {feedback.replies.length > 3 && (
         <button
@@ -451,6 +498,9 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
             editForm
           ) : (
             <MessageProse source={reply.body} onJumpRef={(ref) => onJumpRef(ref, reply.context)} />
+          )}
+          {editing?.replyId !== reply.id && (
+            <MessageAttachments artifactId={feedback.artifactId} images={reply.attachments} />
           )}
           {reply.target && (
             <button

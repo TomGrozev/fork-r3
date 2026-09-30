@@ -11,6 +11,7 @@ import type {
   ArtifactStorageUsage,
   ArtifactVersion,
 } from "../shared/artifacts.ts";
+import { ArtifactAttachments } from "./artifact-attachments.ts";
 import type { ArtifactListeners } from "./artifact-listeners.ts";
 import { ArtifactProjects, type ProjectGroupingOptions } from "./artifact-projects.ts";
 import {
@@ -117,6 +118,7 @@ export interface ArtifactFilter {
 // this module never opens a database or resolves a publisher's working tree.
 // The supplied connection has the artifact schema and foreign_keys enabled.
 export class ArtifactStore {
+  readonly attachments: ArtifactAttachments;
   private readonly projectStore: ArtifactProjects;
   constructor(
     private readonly db: Database,
@@ -127,6 +129,7 @@ export class ArtifactStore {
     projectGrouping: ProjectGroupingOptions = {},
     private readonly listeners?: ArtifactListeners,
   ) {
+    this.attachments = new ArtifactAttachments(db, blobs, clock);
     this.projectStore = new ArtifactProjects(db, clock, projectGrouping);
   }
 
@@ -285,9 +288,21 @@ export class ArtifactStore {
       watching: this.isWatching(id),
       working: !!row.working,
       unhandledCount: row.unhandled_count,
-      storage: this.storageUsage(id),
+      storage: {
+        ...this.storageUsage(id),
+        ...this.attachmentUsage(id),
+      },
       legacy: row.legacy_json === null ? null : JSON.parse(row.legacy_json),
     };
+  }
+
+  private attachmentUsage(id: string): { attachmentBytes?: number } {
+    const bytes = this.db
+      .query<{ bytes: number }, [string]>(
+        "SELECT COALESCE(SUM(byte_length), 0) AS bytes FROM blobs WHERE hash IN (SELECT blob_hash FROM message_attachments WHERE artifact_id = ?)",
+      )
+      .get(id)!.bytes;
+    return bytes ? { attachmentBytes: bytes } : {};
   }
 
   private storageUsage(id: string): ArtifactStorageUsage {

@@ -69,3 +69,25 @@ test("demo status handoff survives edits to delivered notes while new resolved n
   expect(demo.pending(id)).toEqual([]);
   expect(demo.note(fresh.id).note.statusUnsent).toBe(false);
 });
+
+test("demo message retry keys deduplicate concurrent saves and reject changed content", async () => {
+  const id = demo.state.artifacts[0].id;
+  const save = () =>
+    artifactApi.addFeedback(id, "Retry note", { kind: "artifact" }, { operationKey: "note-retry" });
+  const [first, retry] = await Promise.all([save(), save()]);
+  expect(first.id).toBe(retry.id);
+  await expect(
+    artifactApi.addFeedback(id, "Changed", { kind: "artifact" }, { operationKey: "note-retry" }),
+  ).rejects.toMatchObject({ status: 409 });
+  const body = {
+    body: "Retry reply",
+    context: { versionSeq: null, representation: null },
+    operationKey: "reply-retry",
+  };
+  const [reply, retried] = await Promise.all([
+    artifactApi.reply(first.id, body),
+    artifactApi.reply(first.id, body),
+  ]);
+  expect(reply.id).toBe(retried.id);
+  expect(demo.note(first.id).note.replies).toHaveLength(1);
+});

@@ -127,7 +127,8 @@ override if a release marks the peer optional or moves it to `engines`.
 
 `bun run build:demo` (`scripts/build-demo.ts`) produces a static `dist/demo/` that
 runs the **whole SPA with no daemon** — a third client of the same components, but
-its "backend" is an **in-browser store** (`web/demo/`) over `localStorage`.
+its "backend" is an **in-browser store** (`web/demo/`) over `localStorage`,
+with feedback image bytes in IndexedDB.
 
 It uses the same `web/index.html` and application components. One build plugin
 aliases five exact imports:
@@ -173,7 +174,9 @@ and no same-origin privilege. Artifact/version/hash/path identity must match a
 bundled publication; localStorage cannot provide executable document or asset
 bytes. CSS and images are embedded from the same bundle, and links resolve only
 to that publication's documents and fragments. Query routes, external links,
-arbitrary uploads, and the publisher utility/device API are outside this demo.
+arbitrary publication uploads, and the publisher utility/device API are outside this demo.
+Feedback paste/upload and crop use the shared image controls; message retry keys
+persist with demo state and image reads verify membership in the selected artifact.
 
 The shared selection/Locate runtime and Markdown theme/height adapters run on a
 document-specific port exposing only preview UI events. Fragment evidence is

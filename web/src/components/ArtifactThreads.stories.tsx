@@ -6,6 +6,8 @@ import type { ArtifactFeedback, ArtifactReply } from "../../../shared/artifacts.
 import { artifactApi } from "../artifact-api.ts";
 import { artifactDrafts } from "../artifact-drafts.ts";
 import { artifactFixture, artifactFixtureFeedback } from "../artifact-fixtures.ts";
+import { prepareDraftImage } from "../attachment-drafts.ts";
+import { exampleImage } from "../image-fixture.ts";
 import { Button } from "../ui.tsx";
 import { ArtifactThreads } from "./ArtifactThreads.tsx";
 import { FeedbackPanelControls } from "./FeedbackPanelControls.tsx";
@@ -823,3 +825,30 @@ export const SentHandoff: Story = {
     await expect(await canvas.findByRole("button", { name: "Sent" })).toBeDisabled();
   },
 };
+
+export const WithImages: Story = {
+  loaders: [
+    async () => ({
+      image: (await prepareDraftImage(artifactFixture.id, await exampleImage())).attachment,
+    }),
+  ],
+  render: (args, { loaded }) => (
+    <ArtifactThreads
+      {...args}
+      detail={{
+        ...args.detail,
+        feedback: [
+          {
+            ...artifactFixtureFeedback,
+            body: "The chart label needs more space.",
+            attachments: [loaded.image],
+            replies: [
+              { ...artifactFixtureFeedback.replies[0], body: "", attachments: [loaded.image] },
+            ],
+          },
+        ],
+      }}
+    />
+  ),
+};
+export const WithImagesDark: Story = { ...WithImages, globals: { theme: "dark" } };

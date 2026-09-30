@@ -223,7 +223,7 @@ export function previewPolicy(scope: PreviewScope): Headers {
       "sandbox allow-scripts",
       ...(external ? [] : ["webrtc 'block'"]),
     ].join("; "),
-    "Permissions-Policy": "camera=(), microphone=()",
+    "Permissions-Policy": "camera=(), microphone=(), display-capture=()",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "Cross-Origin-Resource-Policy": "cross-origin",

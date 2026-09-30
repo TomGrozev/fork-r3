@@ -8,6 +8,7 @@ import type {
   ArtifactVersion,
   RenderedLocator,
 } from "../../../shared/artifacts.ts";
+import { hasMessageContent } from "../../../shared/attachments.ts";
 import { artifactApi } from "../artifact-api.ts";
 import { artifactComposerField, focusArtifactComposer } from "../artifact-composer-keys.ts";
 import { artifactDrafts, useArtifactNoteOpen, useHasArtifactNote } from "../artifact-drafts.ts";
@@ -21,6 +22,7 @@ import {
 } from "../artifact-navigation.ts";
 import { renderPublishedPreview } from "../artifact-renderer.tsx";
 import { artifactViewForTarget, stepArtifactVersion } from "../artifact-version.ts";
+import { draftImages } from "../attachment-drafts.ts";
 import { AppHeader } from "../components/AppHeader.tsx";
 import { ArtifactComposer } from "../components/ArtifactComposer.tsx";
 import { ArtifactFeedbackPanel } from "../components/ArtifactFeedbackPanel.tsx";
@@ -117,6 +119,11 @@ export function ArtifactView({
       if (query.error instanceof ArtifactApiError && [401, 403].includes(query.error.status))
         void markdownCache.suspend();
       else void markdownCache.forget(artifactId);
+      void draftImages.clear(
+        query.error instanceof ArtifactApiError && [401, 403].includes(query.error.status)
+          ? undefined
+          : artifactId,
+      );
       previewSessions.forget(artifactId);
       readingPositions.forget(artifactId);
     }
@@ -325,7 +332,7 @@ function Workspace({
         setFeedbackMode("hidden");
         return true;
       }
-      if (!artifactDrafts.get(detail.id)?.body.trim()) {
+      if (!hasMessageContent(artifactDrafts.get(detail.id))) {
         artifactDrafts.clear(detail.id);
         setFloating(null);
         if (mobile) setSheet("closed");
@@ -344,7 +351,7 @@ function Workspace({
   }, [handleComposerKey]);
   useEffect(
     () => () => {
-      if (!artifactDrafts.get(detail.id)?.body.trim()) artifactDrafts.clear(detail.id);
+      if (!hasMessageContent(artifactDrafts.get(detail.id))) artifactDrafts.clear(detail.id);
     },
     [detail.id],
   );
@@ -469,7 +476,7 @@ function Workspace({
               path: pending.file,
               locator: { start: pending.lineStart, end: pending.lineEnd, quote: pending.quote },
             };
-      if (rawQuote && artifactDrafts.get(detail.id)?.body.trim()) appendQuote(rawQuote);
+      if (rawQuote && hasMessageContent(artifactDrafts.get(detail.id))) appendQuote(rawQuote);
       else anchor(target, false, undefined, false);
     },
     [version, detail.kind, detail.id, appendQuote, anchor],

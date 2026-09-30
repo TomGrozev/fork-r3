@@ -1,3 +1,4 @@
+import { draftImages } from "./attachment-drafts.ts";
 // Application bootstrap, theme settings, and login-token access.
 // Artifact operations use artifact-api.ts and the shared ArtifactClient.
 
@@ -29,10 +30,12 @@ export const CAN_MANAGE_TOKENS = true;
 // session and answers 401 `{ needsAuth:true }`, and the caller shows the login screen.
 export async function loadBoot(): Promise<{ needsAuth: boolean }> {
   const cacheEpoch = await markdownCache.authenticationEpoch();
+  const imageEpoch = await draftImages.epoch();
   const r = await fetch("/api/boot");
   // 401 = a remote origin with no valid session. Not an error — the signal to log in.
   if (r.status === 401) {
     await markdownCache.suspend();
+    await draftImages.clear();
     const b = (await r.json().catch(() => ({}))) as Partial<BootResponse>;
     return { needsAuth: b.needsAuth ?? true };
   }
@@ -40,10 +43,12 @@ export async function loadBoot(): Promise<{ needsAuth: boolean }> {
   const b = (await r.json()) as BootResponse;
   if (b.needsAuth) {
     await markdownCache.suspend();
+    await draftImages.clear();
     return { needsAuth: true };
   }
   TOKEN = b.token ?? "";
   await markdownCache.resume(cacheEpoch);
+  await draftImages.resume(imageEpoch);
   return { needsAuth: false };
 }
 
@@ -96,6 +101,7 @@ export const api = {
       return await req<{ ok: true }>("POST", "/api/auth/logout");
     } finally {
       await markdownCache.suspend();
+      await draftImages.clear();
     }
   },
   authTokens: () => req<AuthTokenInfo[]>("GET", "/api/auth/tokens"),

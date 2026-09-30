@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
 import {
   ArtifactApiError,
   type ArtifactClient,
   artifactApiPath,
   feedbackApiPath,
 } from "../shared/artifact-client.ts";
-import { artifactFeedbackTargetLabel } from "../shared/artifact-prompt.ts";
+import { artifactFeedbackTargetLabel, attachmentPrompt } from "../shared/artifact-prompt.ts";
 import type {
   Artifact,
   ArtifactActor,
@@ -22,6 +23,7 @@ import { normalizeGitRemote } from "../shared/git-remote.ts";
 import { ArtifactArgs, ArtifactCommandError } from "./artifact-args.ts";
 import { fetchArtifactFeedback } from "./artifact-feedback.ts";
 import { publishArtifactCommand } from "./artifact-publish.ts";
+import { downloadAttachment, readAttachmentFiles, saveAttachment } from "./attachment-files.ts";
 import { currentHarnessSession, detectListener } from "./listener.ts";
 
 export interface ArtifactCommandContext {
@@ -110,9 +112,8 @@ export async function runArtifactCommand(
   ctx: ArtifactCommandContext,
 ): Promise<number> {
   const args = new ArtifactArgs(argv);
-  if (command === "feedback" && args.positional[0] === "fetch") {
-    args.positional.shift();
-    command = "feedback fetch";
+  if (command === "feedback" && ["fetch", "image"].includes(args.positional[0]!)) {
+    command = `feedback ${args.positional.shift()}`;
   }
   const captureFlags = [
     "kind",
@@ -154,12 +155,18 @@ export async function runArtifactCommand(
     patch: ["version"],
     edit: ["title", "meta"],
     delete: [],
-    feedback: args.positional[0] === "add" ? ["message", ...targetFlags] : ["message", "status"],
-    reply: ["message", "version", "view", "target"],
+    feedback:
+      args.positional[0] === "add"
+        ? ["message", "attach", "key", ...targetFlags]
+        : args.positional[0] === "edit"
+          ? ["message", "status", "attach", "clear-attachments"]
+          : [],
+    reply: ["message", "version", "view", "target", "attach", "key"],
     place: [...targetFlags, "state"],
     claim: [],
     release: [],
-    "feedback fetch": ["all", "feedback"],
+    "feedback fetch": ["all", "feedback", "attachments-dir"],
+    "feedback image": ["image", "output"],
     watch: ["timeout"],
     listen: ["foreground"],
     unlisten: [],
@@ -215,8 +222,9 @@ export async function runArtifactCommand(
   };
   const message = async () => {
     const value = await text("message");
-    if (!value?.trim()) throw new ArtifactCommandError("A nonempty -m message is required");
-    return value;
+    if (!value?.trim() && !args.has("attach"))
+      throw new ArtifactCommandError("A nonempty -m message or --attach image is required");
+    return value ?? "";
   };
   const detail = (id: string) => client.json<ArtifactDetail>("GET", artifactApiPath(id));
   const printPublication = async (artifact: Artifact, version: ArtifactVersion) => {
@@ -290,10 +298,13 @@ export async function runArtifactCommand(
           await print(
             `\n${feedback.id} [${feedback.status}] ${artifactFeedbackTargetLabel(feedback)}${feedback.claim ? ` · working: ${feedback.claim.sessionId}` : ""}\n[${feedback.author.role}${feedback.author.sessionId ? ` ${feedback.author.sessionId}` : ""}] ${feedback.body}\nTarget: ${JSON.stringify(feedback.target)}${feedback.legacy ? `\nImported evidence: ${JSON.stringify(feedback.legacy)}` : ""}`,
           );
-          for (const reply of feedback.replies)
+          if (feedback.attachments?.length) await print(attachmentPrompt(feedback.attachments));
+          for (const reply of feedback.replies) {
+            if (reply.attachments?.length) await print(attachmentPrompt(reply.attachments));
             await print(
               `  ${reply.id} [${reply.author.role}${reply.author.sessionId ? ` ${reply.author.sessionId}` : ""}] ${reply.body}\n  Context: ${JSON.stringify(reply.context)}${reply.target ? `; fix: ${JSON.stringify(reply.target)}` : ""}`,
             );
+          }
         }
         for (const event of artifact.events)
           await print(
@@ -356,6 +367,8 @@ export async function runArtifactCommand(
     case "feedback": {
       const [operation, id] = args.positional;
       if (!id) throw new ArtifactCommandError("feedback add|edit|delete <id>");
+      if (args.has("attach") && args.has("clear-attachments"))
+        throw new ArtifactCommandError("Use --attach or --clear-attachments, not both");
       const author = await actor();
       if (operation === "add")
         await print(
@@ -363,6 +376,8 @@ export async function runArtifactCommand(
             actor: author,
             body: await message(),
             target: commandTarget(args),
+            attachments: await readAttachmentFiles(args.values("attach"), ctx.cwd),
+            operationKey: args.value("key"),
           }),
         );
       else if (operation === "edit")
@@ -371,6 +386,11 @@ export async function runArtifactCommand(
             actor: author,
             body: await text("message"),
             status: args.value("status"),
+            ...(args.has("clear-attachments")
+              ? { attachments: [] }
+              : args.has("attach")
+                ? { attachments: await readAttachmentFiles(args.values("attach"), ctx.cwd) }
+                : {}),
           }),
         );
       else if (operation === "delete")
@@ -392,6 +412,8 @@ export async function runArtifactCommand(
           actor: await actor(),
           body: await message(),
           context,
+          attachments: await readAttachmentFiles(args.values("attach"), ctx.cwd),
+          operationKey: args.value("key"),
           target: args.has("target") ? commandTarget(args) : undefined,
         }),
       );
@@ -423,10 +445,20 @@ export async function runArtifactCommand(
       );
       return 0;
     }
+    case "feedback image": {
+      const bytes = await downloadAttachment(client, args.id(), args.require("image"));
+      if (args.has("output")) await saveAttachment(resolve(ctx.cwd, args.require("output")), bytes);
+      else await ctx.write(bytes);
+      return 0;
+    }
     case "feedback fetch": {
       await fetchArtifactFeedback(client, args.id(), ctx.write, {
         all: args.has("all"),
         feedback: args.value("feedback"),
+        attachmentsDir: args.has("attachments-dir")
+          ? resolve(ctx.cwd, args.require("attachments-dir"))
+          : undefined,
+        cwd: ctx.cwd,
       });
       if (
         !args.has("all") &&

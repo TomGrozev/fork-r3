@@ -4,6 +4,31 @@ import type {
   ArtifactNudge,
   ArtifactTarget,
 } from "./artifacts.ts";
+import type { ArtifactAttachment } from "./attachments.ts";
+
+export function attachmentPrompt(images: ArtifactAttachment[] = []): string {
+  return images
+    .map(
+      (image) =>
+        `Image ${image.id} (${image.mediaType}, ${image.width}×${image.height}, ${image.byteLength} bytes)${image.capture ? `\nCapture context: ${JSON.stringify(image.capture)}` : ""}\nDownload: r3 feedback image ${image.artifactId} --image ${image.id} --output ${image.id}.${image.mediaType === "image/png" ? "png" : "jpg"}`,
+    )
+    .join("\n");
+}
+
+export function feedbackAttachments(
+  feedback: ArtifactFeedback[],
+  unsent = false,
+): ArtifactAttachment[] {
+  return feedback.flatMap((item) => {
+    const followup = unsent && !(item.author.role === "human" && item.sentAt === null);
+    return [
+      ...(followup ? [] : (item.attachments ?? [])),
+      ...item.replies
+        .filter((reply) => !followup || (reply.author.role === "human" && reply.sentAt === null))
+        .flatMap((reply) => reply.attachments ?? []),
+    ];
+  });
+}
 
 export function artifactTargetLabel(target: ArtifactTarget): string {
   if (target.kind === "artifact") return "General artifact feedback";
@@ -45,13 +70,17 @@ function block(feedback: ArtifactFeedback, unsent: boolean): string {
     );
   } else lines.push(`Original target: ${JSON.stringify(feedback.target)}`);
   if (feedback.claim) lines.push(`Working agent: ${feedback.claim.sessionId}`);
-  if (!followup) lines.push("", feedback.body);
+  if (!followup) {
+    lines.push("", feedback.body);
+    if (feedback.attachments?.length) lines.push(attachmentPrompt(feedback.attachments));
+  }
   const replies = followup
     ? feedback.replies.filter((reply) => reply.author.role === "human" && reply.sentAt === null)
     : feedback.replies;
   for (const reply of replies) {
     const author = reply.author.role === "agent" ? `agent: ${reply.author.sessionId}` : "human";
     lines.push("", `[${author}] ${reply.body}`);
+    if (reply.attachments?.length) lines.push(attachmentPrompt(reply.attachments));
     if (reply.context.versionSeq !== null)
       lines.push(`Message context: ${JSON.stringify(reply.context)}`);
     if (reply.target) lines.push(`Fix target: ${JSON.stringify(reply.target)}`);

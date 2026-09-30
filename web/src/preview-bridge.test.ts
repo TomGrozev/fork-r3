@@ -22,7 +22,7 @@ test("preview bridge exposes only its artifact's human conversation at the selec
     resourceRoot: "https://preview.example/files/",
     state: "active",
   };
-  const feedback = { id: "feedback_fixture" } as ArtifactFeedback;
+  const feedback = { id: "feedback_fixture", replies: [] } as unknown as ArtifactFeedback;
   const detail = { feedback: [feedback] } as ArtifactDetail;
   const calls: unknown[] = [];
   const api = {
@@ -46,6 +46,17 @@ test("preview bridge exposes only its artifact's human conversation at the selec
     });
   expect(await call("getContext")).toEqual(context);
   expect(await call("getThreads")).toEqual([feedback]);
+  detail.feedback = [
+    {
+      ...feedback,
+      attachments: [{ id: "private-image" }] as ArtifactFeedback["attachments"],
+      replies: [{ id: "reply", attachments: [{ id: "private-reply-image" }] } as ArtifactReply],
+    },
+  ];
+  expect(await call("getThreads")).toEqual([{ id: feedback.id, replies: [{ id: "reply" }] }]);
+  await expect(call("createFeedback", { body: "Spoof", attachments: [] }, true)).rejects.toThrow(
+    "scope",
+  );
   for (const method of ["publish", "archive", "claim", "fetch", "exec", "createSession"])
     await expect(call(method, {}, true)).rejects.toThrow("Unsupported");
   for (const method of ["createFeedback", "reply", "submit"])

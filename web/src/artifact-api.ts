@@ -32,6 +32,7 @@ import type {
   EditArtifactFeedbackBody,
   EditArtifactProjectBody,
 } from "../../shared/artifacts.ts";
+import { type AttachmentInput, attachmentPath } from "../../shared/attachments.ts";
 import { readEventStream } from "../../shared/event-stream.ts";
 import { TOKEN } from "./api.ts";
 import { hrefFor } from "./router.ts";
@@ -73,11 +74,17 @@ export const artifactApi = {
   edit: (id: string, body: { title?: string; summary?: string }) =>
     client().json<Artifact>("PATCH", artifactApiPath(id), body),
   delete: (id: string) => client().json<{ ok: boolean }>("DELETE", artifactApiPath(id)),
-  addFeedback: (id: string, body: string, target: ArtifactTarget) =>
+  addFeedback: (
+    id: string,
+    body: string,
+    target: ArtifactTarget,
+    options: { attachments?: AttachmentInput[]; operationKey?: string } = {},
+  ) =>
     client().json<ArtifactFeedback>("POST", `${artifactApiPath(id)}/feedback`, {
       actor: HUMAN_ACTOR,
       body,
       target,
+      ...options,
     }),
   editFeedback: (id: string, body: Omit<EditArtifactFeedbackBody, "actor">) =>
     client().json<ArtifactFeedback>("PATCH", feedbackApiPath(id), { ...body, actor: HUMAN_ACTOR }),
@@ -88,11 +95,14 @@ export const artifactApi = {
       ...body,
       actor: HUMAN_ACTOR,
     }),
-  editReply: (id: string, body: string) =>
+  editReply: (id: string, body: string, attachments?: AttachmentInput[]) =>
     client().json<ArtifactReply>("PATCH", `/api/replies/${encodeURIComponent(id)}`, {
       actor: HUMAN_ACTOR,
       body,
+      attachments,
     }),
+  attachment: (artifactId: string, id: string) =>
+    client().request("GET", attachmentPath(artifactId, id)),
   place: (id: string, body: Omit<ArtifactPlacementBody, "actor">) =>
     client().json("PUT", `${feedbackApiPath(id)}/placements`, { ...body, actor: HUMAN_ACTOR }),
   lifecycle: async (id: string, body: Omit<ArtifactLifecycleBody, "actor">) => {

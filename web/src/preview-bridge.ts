@@ -89,7 +89,11 @@ export async function previewBridgeCall(
 ): Promise<unknown> {
   if (method === "getTheme") return theme.get();
   if (method === "getContext") return context;
-  if (method === "getThreads") return detail.feedback;
+  if (method === "getThreads")
+    return detail.feedback.map(({ attachments: _images, replies, ...feedback }) => ({
+      ...feedback,
+      replies: replies.map(({ attachments: _replyImages, ...reply }) => reply),
+    }));
   if (!["createFeedback", "reply", "submit", "setTheme"].includes(method))
     throw new Error("Unsupported r3 preview operation");
   // Browser user activation propagates from the preview to its parent. Loading

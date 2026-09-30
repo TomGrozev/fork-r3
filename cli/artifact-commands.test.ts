@@ -75,6 +75,43 @@ async function create() {
 }
 
 describe("artifact CLI over the HTTP contract", () => {
+  test("image-only feedback uploads, downloads, retries and acknowledges only after image delivery", async () => {
+    const id = await create();
+    const bytes = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4HyD3H4QZYAwAV6YJsVhH600AAAAASUVORK5CYII=",
+      "base64",
+    );
+    await writeFile(join(ctx.cwd, "screen.png"), bytes);
+    const args = ["add", id, "--human", "--attach", "screen.png", "--key", "image-note"];
+    const note = JSON.parse((await command("feedback", args)).text);
+    expect(JSON.parse((await command("feedback", args)).text).id).toBe(note.id);
+    const image = note.attachments[0];
+    expect((await command("feedback", ["image", id, "--image", image.id])).bytes).toEqual(bytes);
+    await writeFile(join(ctx.cwd, "blocked"), "not a directory");
+    await expect(
+      command("feedback", ["fetch", id, "--attachments-dir", "blocked"]),
+    ).rejects.toThrow();
+    expect(storage.conversations.get(note.id).sentAt).toBeNull();
+    const fetched = await command("feedback", ["fetch", id, "--attachments-dir", "images"]);
+    expect(fetched.text).toContain(`images/${image.id}.png`);
+    expect(fetched.text).toContain(`r3 feedback image ${id}`);
+    expect(await Bun.file(join(ctx.cwd, "images", `${image.id}.png`)).bytes()).toEqual(
+      new Uint8Array(bytes),
+    );
+    expect(storage.conversations.get(note.id).sentAt).not.toBeNull();
+    expect(
+      (await command("feedback", ["fetch", id, "--all", "--attachments-dir", "images"])).code,
+    ).toBe(0);
+    await command("feedback", [
+      "edit",
+      note.id,
+      "--human",
+      "-m",
+      "Removed image",
+      "--clear-attachments",
+    ]);
+    expect(storage.conversations.get(note.id).attachments).toEqual([]);
+  });
   for (const name of ["feedback", "watch"]) {
     test(`${name} waits for stdout completion before acknowledgment`, async () => {
       const id = await create();

@@ -1,6 +1,29 @@
 import { expect, test } from "bun:test";
 import { ArtifactDraftStore } from "./artifact-drafts.ts";
 
+test("image-only drafts retain native targets, survive reload, and block handoff", () => {
+  const disk = storage();
+  const drafts = new ArtifactDraftStore(disk);
+  const target = { kind: "rendered", versionSeq: 1, path: "index.html", locator: null } as const;
+  const image = {
+    id: "draft-image",
+    mediaType: "image/png",
+    width: 160,
+    height: 90,
+    byteLength: 500,
+  } as const;
+  drafts.update("artifact_image", { target, attachments: [image] });
+  expect(drafts.has("artifact_image")).toBe(true);
+  expect(drafts.anchor("artifact_image", { ...target, versionSeq: 2 })).toBe(false);
+  drafts.flush();
+  const reloaded = new ArtifactDraftStore(disk);
+  expect(reloaded.get("artifact_image")?.target).toEqual(target);
+  expect(reloaded.get("artifact_image")?.attachments).toEqual([image]);
+  reloaded.clear("artifact_image");
+  reloaded.flush();
+  expect(new ArtifactDraftStore(disk).has("artifact_image")).toBe(false);
+});
+
 function storage() {
   const values = new Map<string, string>();
   return {
@@ -218,4 +241,20 @@ test("a completed save clears its unchanged draft while preserving other draft s
   const reply = store.get("artifact_example", "feedback_example")!;
   expect(store.clearIfCurrent("artifact_example", reply, "feedback_example")).toBe(true);
   store.flush();
+});
+
+test("reloaded image preparation becomes a removable error without losing draft text", () => {
+  const disk = storage();
+  const drafts = new ArtifactDraftStore(disk);
+  drafts.update("artifact_image", {
+    body: "Keep this",
+    attachments: [
+      { id: "pending", mediaType: "image/png", width: 0, height: 0, byteLength: 0, pending: true },
+    ],
+  });
+  drafts.flush();
+  const recovered = new ArtifactDraftStore(disk).get("artifact_image")!;
+  expect(recovered.body).toBe("Keep this");
+  expect(recovered.attachments![0]!.pending).toBe(false);
+  expect(recovered.attachments![0]!.error).toContain("interrupted");
 });

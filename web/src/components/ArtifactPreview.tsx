@@ -36,6 +36,7 @@ import { ArtifactPreviewCompatibilityConsent } from "./ArtifactPreviewCompatibil
 import { ArtifactPreviewNetworkControl } from "./ArtifactPreviewNetworkControl.tsx";
 import { ArtifactPreviewSecuritySource } from "./ArtifactPreviewSecurity.tsx";
 import { PassiveMarkdown } from "./PassiveMarkdown.tsx";
+import { PreviewScreenshot } from "./PreviewScreenshot.tsx";
 
 const NO_DEVICES: PreviewDevicePermissions = { camera: false, microphone: false };
 
@@ -252,6 +253,7 @@ function PreviewSession(
   const id = props.detail.id;
   const seq = props.version.seq;
   const network = props.network;
+  const [screenshotRoute, setScreenshotRoute] = useState("#");
   const capture = props.capture;
   const markdown = props.markdownFiles.find((file) => file.path === props.path);
   const renderedHash = markdown?.renderedHash;
@@ -564,6 +566,7 @@ function PreviewSession(
             resetDocument((epoch) => epoch + 1);
             return;
           }
+          setScreenshotRoute(route);
           currentPath.current = message.path;
           current.current.onDocument(message.path, route);
           setReady(true);
@@ -858,6 +861,17 @@ function PreviewSession(
             : "min-h-80"),
       )}
     >
+      {ready && !error && props.detail.kind === "html" && (
+        <PreviewScreenshot
+          key={`${context?.id}:${documentEpoch}:${props.path}:${screenshotRoute}`}
+          artifactId={id}
+          versionSeq={seq}
+          path={props.path}
+          route={screenshotRoute}
+          frame={iframe}
+          onTarget={props.onTarget}
+        />
+      )}
       {error ? (
         <div role="alert" className="p-6 text-sm text-neutral-700 dark:text-neutral-300">
           <p>{error}</p>
@@ -909,7 +923,7 @@ function PreviewSession(
           title={`${props.detail.title || "Artifact"} preview`}
           sandbox="allow-scripts"
           {...{ credentialless: "" }}
-          allow="camera 'none'; microphone 'none'"
+          allow="camera 'none'; microphone 'none'; display-capture 'none'"
           referrerPolicy="no-referrer"
           aria-hidden={!ready}
           inert={!ready}

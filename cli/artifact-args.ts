@@ -17,6 +17,7 @@ const BOOLEAN = new Set([
   "staged",
   "foreground",
   "no-listen",
+  "clear-attachments",
 ]);
 const VALUE = new Set([
   "kind",
@@ -48,8 +49,12 @@ const VALUE = new Set([
   "feedback",
   "timeout",
   "remote",
+  "attach",
+  "attachments-dir",
+  "image",
+  "output",
 ]);
-const REPEATED = new Set(["file", "meta"]);
+const REPEATED = new Set(["file", "meta", "attach"]);
 export class ArtifactArgs {
   readonly positional: string[] = [];
   private readonly flags = new Map<string, string[]>();

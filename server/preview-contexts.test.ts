@@ -96,7 +96,7 @@ test("preview policies scope resources, forbid forms/redirects/WebRTC, and isola
   );
   expect(headers.get("content-security-policy")).toContain("form-action 'none'");
   expect(headers.get("content-security-policy")).toContain("sandbox allow-scripts");
-  expect(headers.get("permissions-policy")).toBe("camera=(), microphone=()");
+  expect(headers.get("permissions-policy")).toBe("camera=(), microphone=(), display-capture=()");
   expect(headers.has("set-cookie")).toBe(false);
   // Header assertions prove configuration only; browser acceptance must prove enforcement.
   contexts.revokeArtifact(id);
@@ -164,7 +164,7 @@ test("external connections require an explicit HTML context and never relax an e
   ])
     expect(csp).toContain(directive);
   expect(csp).not.toContain("allow-same-origin");
-  expect(headers.get("permissions-policy")).toBe("camera=(), microphone=()");
+  expect(headers.get("permissions-policy")).toBe("camera=(), microphone=(), display-capture=()");
   expect(contexts.renew(external.id).network).toBe("external");
   expect(contexts.renew(closed.id).network).toBe("blocked");
   expect(

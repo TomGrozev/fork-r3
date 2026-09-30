@@ -352,3 +352,27 @@ an owner-only consistent backup, then retains existing text in
 `artifact_summary` feedback targets stay unchanged and readable, but are rejected
 for new comments. The old live-review migration retains its overview in the
 original review provenance. Version summaries are unaffected.
+
+
+## Conversation attachments
+
+`message_attachments` owns an opaque image ID, artifact identity, exactly one
+feedback/reply owner, ordering, content-addressed blob hash, validated raster media
+type/dimensions, and optional capture-context JSON. Composite foreign keys prevent
+cross-artifact ownership. Original targets and published version membership are
+unaffected. Old messages have empty attachment lists; schema version 7 adds these
+tables to version 6 stores under the existing backup/atomic upgrade procedure.
+
+New bytes are validated and installed under the blob store's GC hold, then image
+membership and message changes commit in one SQLite transaction. A failed mutation
+can leave only unreferenced bytes, reclaimed by normal GC. GC marks attachment and
+publication references together. Removing a message cascades attachment membership;
+archive preserves it. `storage.attachmentBytes` counts distinct referenced image
+blobs separately from `totalBytes` and `latestVersionBytes` (published content).
+
+`message_operations` binds an optional create/reply operation key to artifact,
+canonical request fingerprint, and owning message. An unchanged replay returns the
+message; changed input conflicts. Editing preserves omitted attachments and replaces
+an explicitly supplied ordered list. Existing IDs may be retained only on their
+original message. Image changes advance the persisted conversation revision and
+use the same delivery rules as text changes, including edit/revert detection.

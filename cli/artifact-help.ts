@@ -24,14 +24,17 @@ Publication: --version-label L --summary S --key K --no-listen
 Create: --kind is required; --project ID --meta k=v (repeatable).
 HTML images: publish standalone assets with relative <img src> URLs; see r3 guide html.
 
-  feedback add <id> -m <message> [target flags]
+  feedback add <id> [-m <message>] [--attach <image>]... [--key K] [target flags]
   feedback edit <feedback-id> [-m <message>] [--status open|resolved --human]
+        [--attach <image>]... | [--clear-attachments]
   feedback delete <feedback-id>
-  reply <feedback-id> -m <message> [--version <seq> --view source|rendered|diff]
+  reply <feedback-id> [-m <message>] [--attach <image>]... [--key K]
+        [--version <seq> --view source|rendered|diff]
         [--target <JSON fix target>]
   place <feedback-id> --target <JSON document target> --state anchored|unplaced|ambiguous
   claim <feedback-id>... | release <feedback-id>...
-  feedback fetch <id> [--all] [--feedback <id,id>]
+  feedback fetch <id> [--all] [--feedback <id,id>] [--attachments-dir <directory>]
+  feedback image <id> --image <image-id> [--output <file>] # bytes to stdout otherwise
   watch <id> [--timeout <seconds>]
   listen <id>                                # explicit notification recipient
   unlisten <id>                              # remove your listener registrations
@@ -54,6 +57,13 @@ Listener failure only warns on stderr. A failed acknowledgment can repeat output
 on retry; concurrent edits remain pending. --human skips listener registration.
 Use ! r3 feedback fetch <id> in your harness to load feedback into its context.
 --all reads history without acknowledgment or listener registration.
+Images: static PNG/JPEG, at most four per message, 5 MiB and 20 megapixels each.
+A message needs text or an image. Editing with --attach replaces all images;
+omitting it preserves them. --clear-attachments removes them (text must remain).
+Use the same --key to retry an unchanged add/reply after an uncertain response.
+Image references are included in fetch output. --attachments-dir downloads and
+verifies the snapshot's images before output and acknowledgment; failures leave
+feedback pending. Existing matching files are reused; different files are not overwritten.
 Text flags accept - to read stdin. --json prints structured results.
 Remote: R3_URL selects the application URL; R3_TOKEN supplies its API credential.
 
@@ -143,6 +153,8 @@ When no agent is listening, the web UI's **Use in agent** button shows a copyabl
 ## Handle feedback
 
 \`r3 claim <feedback-id>...\` accepts multiple IDs, as shown above. Claims are renewable 60-minute leases; another live holder conflicts. Use \`r3 release <feedback-id>...\` when abandoning work. A resolved-status notification needs no action.
+
+Feedback may include images. Download them with the supplied \`r3 feedback image\` command and open them with your harness's image-viewing tool before responding. A text reference does not load pixels into the model. Alternatively, \`r3 feedback fetch <id> --attachments-dir ./feedback-images\` downloads and verifies all images in the snapshot before acknowledging it. Capture context describes observed pixels; it does not establish a selector or source line. Use repeatable \`--attach <image>\` on feedback and replies to provide visual evidence.
 
 Inspect original targets in their recorded version and representation. Rendered selectors, quotes, routes, and viewports describe the published page, not source lines. Reuse matching local source when revising your own publication; retrieve published content only when needed, such as an older version or another agent's work. Inspection/download commands are in \`r3 --help\`.
 

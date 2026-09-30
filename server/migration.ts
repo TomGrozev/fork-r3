@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { open } from "node:fs/promises";
+import { ATTACHMENT_SCHEMA } from "./artifact-attachments.ts";
 import { ARTIFACT_LISTENER_SCHEMA } from "./artifact-listeners.ts";
 import {
   ARTIFACT_SCHEMA_VERSION,
@@ -139,7 +140,7 @@ export async function migrateLegacyStore(
     };
   }
   const artifactUpgrade =
-    [1, 2, 3, 4, 5].includes(schemaVersion) &&
+    [1, 2, 3, 4, 5, 6].includes(schemaVersion) &&
     tables.includes("artifacts") &&
     !tables.includes("reviews");
   if (
@@ -180,8 +181,10 @@ export async function migrateLegacyStore(
         db.exec(`ALTER TABLE feedback ADD COLUMN ever_delivered INTEGER NOT NULL DEFAULT 0
         CHECK (ever_delivered IN (0, 1));
         UPDATE feedback SET ever_delivered = 1;`);
-      db.exec(`ALTER TABLE artifacts ADD COLUMN feedback_revision INTEGER NOT NULL DEFAULT 0
+      if (schemaVersion < 6)
+        db.exec(`ALTER TABLE artifacts ADD COLUMN feedback_revision INTEGER NOT NULL DEFAULT 0
         CHECK (feedback_revision >= 0);`);
+      db.exec(ATTACHMENT_SCHEMA);
     } else {
       const data = readLegacyData(db);
       checkLegacyRelations(data);

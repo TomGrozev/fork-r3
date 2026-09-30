@@ -29,6 +29,10 @@ export interface ArtifactDemoSeed {
   themeStyles: Record<string, ThemeStyle>;
 }
 export interface ArtifactDemoState extends ArtifactDemoSeed {
+  messageOperations?: Record<
+    string,
+    { hash: string; id: string; kind: "feedback" | "reply"; artifactId: string }
+  >;
   schema: number;
   viewed: Record<string, string[]>;
   feedbackRevisions: Record<string, number>;

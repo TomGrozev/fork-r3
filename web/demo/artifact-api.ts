@@ -1,12 +1,92 @@
-import { buildArtifactPrompt } from "../../shared/artifact-prompt.ts";
-import type { ArtifactStreamEvent } from "../../shared/artifacts.ts";
+import { buildArtifactPrompt, feedbackAttachments } from "../../shared/artifact-prompt.ts";
+import type {
+  ArtifactFeedback,
+  ArtifactReply,
+  ArtifactStreamEvent,
+} from "../../shared/artifacts.ts";
+import {
+  type ArtifactAttachment,
+  ATTACHMENT_LIMITS,
+  type AttachmentInput,
+} from "../../shared/attachments.ts";
 import { normalizeGitRemote } from "../../shared/git-remote.ts";
 import type { artifactApi as productionApi } from "../src/artifact-api.ts";
+import { DraftImageStore, draftImages, prepareDraftImage } from "../src/attachment-drafts.ts";
 import { demo, fail, human, mint, now } from "./artifact-backend.ts";
 
 export { human as HUMAN_ACTOR };
 
 const copy = <T>(value: T): T => structuredClone(value);
+const demoImages = new DraftImageStore("r3-demo-images");
+async function attachments(
+  artifactId: string,
+  inputs: AttachmentInput[] | undefined,
+  current: ArtifactAttachment[] = [],
+): Promise<ArtifactAttachment[]> {
+  if (inputs === undefined) return current;
+  if (inputs.length > ATTACHMENT_LIMITS.count) fail("A message can contain at most four images");
+  const result: ArtifactAttachment[] = [];
+  for (const input of inputs) {
+    if ("id" in input) {
+      const held = current.find((image) => image.id === input.id);
+      if (!held || result.some((image) => image.id === held.id))
+        fail("Attachment does not belong to this message");
+      result.push(held!);
+      continue;
+    }
+    const bytes = Uint8Array.from(atob(input.base64), (value) => value.charCodeAt(0));
+    const prepared = await prepareDraftImage(
+      artifactId,
+      new Blob([bytes], { type: input.mediaType }),
+      input.capture,
+    );
+    const blob = await draftImages.get(prepared.attachment.id);
+    const id = `image_${crypto.randomUUID().replaceAll("-", "")}`;
+    const saved = await demoImages.put(artifactId, blob, id);
+    if (!saved.persisted) fail("Demo image storage is unavailable; the message was not saved");
+    const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+    const hash = Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+    result.push({ ...prepared.attachment, id, artifactId, hash });
+  }
+  return result;
+}
+
+async function messageOperation(
+  artifactId: string,
+  kind: "feedback" | "reply",
+  key: string | undefined,
+  input: unknown,
+) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(input)),
+  );
+  const hash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const index = JSON.stringify([artifactId, key]);
+  return {
+    replay() {
+      if (!key) return null;
+      const saved = demo.state.messageOperations?.[index];
+      if (!saved) return null;
+      if (saved.hash !== hash || saved.kind !== kind)
+        fail("Operation key was used for a different message", 409);
+      return saved.kind === "feedback"
+        ? copy(demo.note(saved.id).note)
+        : copy(demo.reply(saved.id).reply);
+    },
+    save(id: string) {
+      if (key) {
+        demo.state.messageOperations ??= {};
+        demo.state.messageOperations[index] = { hash, id, kind, artifactId };
+        demo.persist();
+      }
+    },
+  };
+}
 
 export const artifactApi: typeof productionApi = {
   sessions: async () =>
@@ -95,24 +175,60 @@ export const artifactApi: typeof productionApi = {
       if (key.startsWith(`${id}/`)) delete demo.state.publications[key];
     delete demo.state.pending[id];
     delete demo.state.viewed[id];
+    for (const [key, operation] of Object.entries(demo.state.messageOperations ?? {}))
+      if (operation.artifactId === id) delete demo.state.messageOperations![key];
+    await demoImages.clear(id);
     demo.persist();
     for (const listener of demo.subscribers) listener({ type: "artifact-deleted", artifactId: id });
     return { ok: true };
   },
-  addFeedback: async (id, body, target) => demo.addFeedback(id, body, target),
+  addFeedback: async (id, body, target, options = {}) => {
+    demo.target(id, target);
+    const operation = await messageOperation(id, "feedback", options.operationKey, {
+      body,
+      target,
+      attachments: options.attachments,
+    });
+    const replay = operation.replay();
+    if (replay) return replay as ArtifactFeedback;
+    const images = await attachments(id, options.attachments);
+    const concurrent = operation.replay();
+    if (concurrent) return concurrent as ArtifactFeedback;
+    const note = demo.addFeedback(id, body, target, images);
+    operation.save(note.id);
+    return note;
+  },
+  attachment: async (artifactId, id) => {
+    const images = demo
+      .get(artifactId)
+      .feedback.flatMap((note) => [
+        ...(note.attachments ?? []),
+        ...note.replies.flatMap((reply) => reply.attachments ?? []),
+      ]);
+    if (!images.some((image) => image.id === id)) fail("Attachment not found", 404);
+    return new Response(await demoImages.get(id));
+  },
   editFeedback: async (id, body) => {
     const { artifact, note } = demo.note(id);
+    const nextImages = await attachments(artifact.id, body.attachments, note.attachments);
+    const imagesChanged = JSON.stringify(nextImages) !== JSON.stringify(note.attachments ?? []);
+    if (!(body.body ?? note.body).trim() && !nextImages.length)
+      fail("A message needs text or an image");
+    note.attachments = nextImages;
     const previousBody = note.body;
     const previousStatus = note.status;
     if (body.body !== undefined) {
-      if (!body.body.trim()) fail("Feedback requires a message");
       note.body = body.body;
     }
     if (body.status !== undefined && body.status !== note.status) {
       note.status = body.status;
       if (note.status === "resolved") note.claim = null;
     }
-    if (note.author.role === "human" && note.status === "open" && note.body !== previousBody)
+    if (
+      note.author.role === "human" &&
+      note.status === "open" &&
+      (note.body !== previousBody || imagesChanged)
+    )
       note.sentAt = null;
     note.statusUnsent ||= note.status !== previousStatus && demo.state.everDelivered[id] === true;
     note.updatedAt = now();
@@ -123,6 +239,14 @@ export const artifactApi: typeof productionApi = {
   deleteFeedback: async (id) => {
     const { artifact } = demo.note(id);
     delete demo.state.everDelivered[id];
+    for (const [key, operation] of Object.entries(demo.state.messageOperations ?? {}))
+      if (
+        operation.id === id ||
+        artifact.feedback
+          .find((note) => note.id === id)
+          ?.replies.some((reply) => reply.id === operation.id)
+      )
+        delete demo.state.messageOperations![key];
     artifact.feedback = artifact.feedback.filter((item) => item.id !== id);
     artifact.placements = artifact.placements.filter((item) => item.feedbackId !== id);
     artifact.working = artifact.feedback.some((item) => item.claim !== null);
@@ -131,7 +255,13 @@ export const artifactApi: typeof productionApi = {
   },
   reply: async (id, body) => {
     const { artifact, note } = demo.note(id);
-    if (!body.body.trim()) fail("A reply requires a message");
+    const operation = await messageOperation(artifact.id, "reply", body.operationKey, { id, body });
+    const replay = operation.replay();
+    if (replay) return replay as ArtifactReply;
+    const images = await attachments(artifact.id, body.attachments);
+    const concurrent = operation.replay();
+    if (concurrent) return concurrent as ArtifactReply;
+    if (!body.body.trim() && !images.length) fail("A reply needs text or an image");
     if (body.context.versionSeq !== null) demo.publication(artifact.id, body.context.versionSeq);
     if (body.target) demo.target(artifact.id, body.target);
     const reply = {
@@ -140,6 +270,7 @@ export const artifactApi: typeof productionApi = {
       feedbackId: id,
       author: human,
       body: body.body,
+      attachments: images,
       context: copy(body.context),
       target: copy(body.target ?? null),
       legacy: null,
@@ -147,13 +278,16 @@ export const artifactApi: typeof productionApi = {
       sentAt: null,
     };
     note.replies.push(reply);
+    operation.save(reply.id);
     demo.changed(artifact.id);
     return copy(reply);
   },
-  editReply: async (id, body) => {
+  editReply: async (id, body, inputs) => {
     const { artifact, reply } = demo.reply(id);
-    if (!body.trim()) fail("A reply requires a message");
-    if (reply.body !== body) {
+    const images = await attachments(artifact.id, inputs, reply.attachments);
+    if (!body.trim() && !images.length) fail("A reply needs text or an image");
+    if (reply.body !== body || JSON.stringify(images) !== JSON.stringify(reply.attachments ?? [])) {
+      reply.attachments = images;
       reply.body = body;
       if (reply.author.role === "human") reply.sentAt = null;
     }
@@ -206,7 +340,11 @@ export const artifactApi: typeof productionApi = {
     const selected = artifact.feedback.filter((note) =>
       feedback ? feedback.includes(note.id) : note.status === "open",
     );
-    return { text: buildArtifactPrompt(artifact, selected), itemCount: selected.length };
+    return {
+      text: buildArtifactPrompt(artifact, selected),
+      itemCount: selected.length,
+      attachments: feedbackAttachments(selected),
+    };
   },
   acknowledgeFeedback: async (id, body) => {
     if (!/^[a-f0-9]{64}$/.test(body.expectedFingerprint ?? ""))

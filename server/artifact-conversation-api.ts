@@ -1,11 +1,12 @@
 import type { Hono } from "hono";
-import { buildArtifactPrompt } from "../shared/artifact-prompt.ts";
+import { buildArtifactPrompt, feedbackAttachments } from "../shared/artifact-prompt.ts";
 import type {
   ArtifactDetail,
   ArtifactFeedbackAcknowledged,
   ArtifactFeedbackRead,
   ArtifactFeedbackSnapshot,
 } from "../shared/artifacts.ts";
+import { ATTACHMENT_LIMITS } from "../shared/attachments.ts";
 import { AgentConnections } from "./agent-connections.ts";
 import type { ArtifactCollaboration } from "./artifact-collaboration.ts";
 import { ARTIFACT_EVENT_HEADERS, artifactEvents } from "./artifact-events.ts";
@@ -31,17 +32,40 @@ export function installArtifactConversations(
   const shutdown = new AbortController();
   const changed = (artifactId: string, feedbackId: string) =>
     collaboration.broadcast({ type: "feedback-updated", artifactId, feedbackId });
+  app.on(["GET", "HEAD"], "/api/artifacts/:id/attachments/:image", async (c) => {
+    const { attachment, bytes } = await artifacts.attachments.read(
+      c.req.param("id"),
+      c.req.param("image"),
+    );
+    return new Response(c.req.method === "HEAD" ? null : new Uint8Array(bytes), {
+      headers: {
+        "Content-Type": attachment.mediaType,
+        "Content-Length": String(bytes.byteLength),
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Content-Security-Policy": "sandbox; default-src 'none'; frame-ancestors 'none'",
+        "Content-Disposition": `inline; filename="${attachment.id}.${attachment.mediaType === "image/png" ? "png" : "jpg"}"`,
+      },
+    });
+  });
   app.get("/api/artifacts/:id/feedback", (c) =>
     artifactJsonResponse(c.req.raw, conversations.list(c.req.param("id"))),
   );
   app.post("/api/artifacts/:id/feedback", async (c) => {
-    const feedback = await conversations.add(c.req.param("id"), await artifactJson(c.req.raw));
+    const feedback = await conversations.add(
+      c.req.param("id"),
+      await artifactJson(c.req.raw, ATTACHMENT_LIMITS.requestBytes),
+    );
     changed(feedback.artifactId, feedback.id);
     return c.json(feedback, 201);
   });
   app.get("/api/feedback/:id", (c) => c.json(conversations.get(c.req.param("id"))));
   app.patch("/api/feedback/:id", async (c) => {
-    const feedback = conversations.edit(c.req.param("id"), await artifactJson(c.req.raw));
+    const feedback = await conversations.update(
+      c.req.param("id"),
+      await artifactJson(c.req.raw, ATTACHMENT_LIMITS.requestBytes),
+    );
     changed(feedback.artifactId, feedback.id);
     return c.json(feedback);
   });
@@ -53,12 +77,18 @@ export function installArtifactConversations(
     return c.json({ ok: true });
   });
   app.post("/api/feedback/:id/replies", async (c) => {
-    const reply = await conversations.addReply(c.req.param("id"), await artifactJson(c.req.raw));
+    const reply = await conversations.addReply(
+      c.req.param("id"),
+      await artifactJson(c.req.raw, ATTACHMENT_LIMITS.requestBytes),
+    );
     changed(reply.artifactId, reply.feedbackId);
     return c.json(reply, 201);
   });
   app.patch("/api/replies/:id", async (c) => {
-    const reply = conversations.editReply(c.req.param("id"), await artifactJson(c.req.raw));
+    const reply = await conversations.updateReply(
+      c.req.param("id"),
+      await artifactJson(c.req.raw, ATTACHMENT_LIMITS.requestBytes),
+    );
     changed(reply.artifactId, reply.feedbackId);
     return c.json(reply);
   });
@@ -88,6 +118,7 @@ export function installArtifactConversations(
     return c.json({
       text: buildArtifactPrompt(detailFor(id), snapshot.feedback, true),
       itemCount: snapshot.feedback.length,
+      attachments: feedbackAttachments(snapshot.feedback, true),
       acknowledgment: snapshot.acknowledgment,
     } satisfies ArtifactFeedbackSnapshot);
   });
@@ -100,6 +131,7 @@ export function installArtifactConversations(
     return c.json({
       text: buildArtifactPrompt(detail, selected),
       itemCount: selected.length,
+      attachments: feedbackAttachments(selected),
     } satisfies ArtifactFeedbackRead);
   });
   app.post("/api/artifacts/:id/feedback/acknowledge", async (c) => {

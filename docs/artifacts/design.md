@@ -693,3 +693,40 @@ Builds, dependency installation, server-side application execution, backend host
 deployment orchestration, multi-user permissions, recipient fan-out, automatic
 cross-view mapping, root-relative rewriting, and history-route fallback are outside
 this feature. Local operation and remote publishing use the same artifact model.
+
+
+## Images in conversations
+
+Feedback and replies accept up to four static PNG/JPEG attachments, each at most
+5 MiB and 20 megapixels. Text may be empty when an image is present. An attachment
+belongs to its message, independently of the immutable original target or reply
+fix target. A screenshot's version/path/route/viewport/crop is observed context,
+not a selector, source location, or claim of reproducible dynamic page state.
+
+The composer accepts user-initiated paste and image file selection. Browser inputs
+are normalized to static PNG; WebP input is also accepted by that normalization.
+Thumbnails have Crop and Remove controls; posted images open in a modal viewer.
+The same controls serve notes, replies, message edits, floating composers, and the
+mobile sheet. Pending or failed images count as draft content and block posting
+until prepared or removed. Images do not silently replace a populated target.
+
+Draft metadata stays in the existing per-slot localStorage records; binary bytes
+live in IndexedDB. Successful image storage precedes persisting its reference.
+Storage failure leaves an in-memory draft with an explicit reload warning. Posted
+or discarded references become eligible for cleanup after a 24-hour grace period;
+referenced drafts are not evicted. Logout and artifact deletion revoke local image
+bytes; an epoch prevents late work from repopulating storage across tabs.
+
+HTML previews offer Capture area where current-tab Region Capture is available.
+The trusted workspace opens the browser's sharing chooser, crops the tab stream
+to the preview iframe, freezes one frame, and stops every track before opening the
+crop editor. Only the selected crop enters the draft. Sharing denial, wrong-surface
+selection, navigation, timeout, or unsupported capture preserves the draft and
+leaves paste/upload available. The browser decides which capture APIs are present;
+there is no assumption of universal desktop or mobile capture support. Crop can
+be selected by dragging or by entering numeric coordinates and dimensions.
+
+Agents receive image IDs and download commands in feedback output. Fetch with
+`--attachments-dir` writes and verifies all selected immutable image bytes before
+stdout and acknowledgment. Download or output failure leaves feedback pending.
+Fetching references acknowledges handoff, not proof that a model viewed pixels.

@@ -1,3 +1,4 @@
+import type { ArtifactAttachment, AttachmentInput } from "./attachments.ts";
 // Artifact HTTP contract. Content and message targets always name a publication;
 // publisher-local paths and live working trees never participate in reads.
 
@@ -31,6 +32,7 @@ export interface EditArtifactProjectBody {
 }
 
 export interface ArtifactStorageUsage {
+  attachmentBytes?: number;
   // Distinct original/retained blobs across published versions plus each patch's
   // UTF-8 bytes. Excludes database/filesystem overhead and unpublished content.
   // Shared blobs count toward each referencing artifact, not reclaimable space.
@@ -150,6 +152,7 @@ export interface ArtifactClaim {
 }
 
 export interface ArtifactReply {
+  attachments?: ArtifactAttachment[];
   id: string;
   feedbackId: string;
   artifactId: string;
@@ -163,6 +166,7 @@ export interface ArtifactReply {
 }
 
 export interface ArtifactFeedback {
+  attachments?: ArtifactAttachment[];
   id: string;
   artifactId: string;
   author: ArtifactActor;
@@ -254,12 +258,16 @@ export interface PublishArtifactBody {
 }
 
 export interface CreateArtifactFeedbackBody {
+  operationKey?: string;
+  attachments?: AttachmentInput[];
   actor: ArtifactActor;
   body: string;
   target: ArtifactTarget;
 }
 
 export interface CreateArtifactReplyBody {
+  operationKey?: string;
+  attachments?: AttachmentInput[];
   actor: ArtifactActor;
   body: string;
   context: ArtifactMessageContext;
@@ -267,12 +275,14 @@ export interface CreateArtifactReplyBody {
 }
 
 export interface EditArtifactFeedbackBody {
+  attachments?: AttachmentInput[];
   actor: ArtifactActor;
   body?: string;
   status?: "open" | "resolved";
 }
 
 export interface EditArtifactReplyBody {
+  attachments?: AttachmentInput[];
   actor: ArtifactActor;
   body: string;
 }
@@ -372,6 +382,7 @@ export interface ArtifactFeedbackAcknowledgment {
 }
 
 export interface ArtifactFeedbackRead {
+  attachments?: ArtifactAttachment[];
   text: string;
   itemCount: number;
 }

@@ -168,7 +168,9 @@ test("external HTML contexts retain browser checks, sandbox, membership, and rev
   expect(document.status).toBe(200);
   expect(document.headers.has("connection-allowlist")).toBe(false);
   expect(document.headers.get("content-security-policy")).toContain("sandbox allow-scripts");
-  expect(document.headers.get("permissions-policy")).toBe("camera=(), microphone=()");
+  expect(document.headers.get("permissions-policy")).toBe(
+    "camera=(), microphone=(), display-capture=()",
+  );
   expect(await document.text()).toContain("Published page");
   expect((await read("/files/index.html", { "sec-fetch-dest": "document" })).status).toBe(403);
   expect((await read("/r3/runtime.js", { "service-worker": "script" })).status).toBe(403);

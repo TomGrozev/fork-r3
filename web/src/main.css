@@ -588,3 +588,8 @@ html.dark .r3-ref {
     transition: none;
   }
 }
+
+/* Detached workspace controls must not cover a captured preview. */
+html[data-r3-screenshot] .r3-floating {
+  visibility: hidden;
+}
