@@ -1,4 +1,5 @@
 import { memo, useMemo, useState } from "react";
+import { readDisplayPreference, writeDisplayPreference } from "../display-storage.ts";
 import { compareFilePaths } from "../file-order.ts";
 import { useFontSize } from "../settings.ts";
 import { Collapse, cn, FoldChevrons, FoldTriangle, useResizableWidth } from "../ui.tsx";
@@ -188,10 +189,10 @@ export const FileBrowser = memo(function FileBrowser({
     grow: "right",
   });
   const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem("r3-filebrowser-collapsed") === "1",
+    () => readDisplayPreference("r3-filebrowser-collapsed") === "1",
   );
   const setCollapsedPersist = (v: boolean) => {
-    localStorage.setItem("r3-filebrowser-collapsed", v ? "1" : "0");
+    writeDisplayPreference("r3-filebrowser-collapsed", v ? "1" : "0");
     setCollapsed(v);
   };
   const viewedCount = useMemo(() => files.filter((f) => viewed.has(f)).length, [files, viewed]);

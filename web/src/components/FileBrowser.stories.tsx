@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
+import { writeDisplayPreference } from "../display-storage.ts";
 import { FileBrowser } from "./FileBrowser.tsx";
 
 const FILES = [
@@ -111,6 +112,45 @@ export const Resizable: Story = {
     await userEvent.keyboard("{ArrowRight}");
     await expect(Number(handle.getAttribute("aria-valuenow"))).toBe(original + 10);
     await expect(localStorage.getItem("r3-filebrowser-width")).toBe(String(original + 10));
+    await userEvent.click(canvas.getByTitle("Hide files"));
+    await userEvent.click(canvas.getByTitle("Show files"));
+    const restored = canvas.getByRole("separator", { name: "Resize file panel" });
+    await expect(Number(restored.getAttribute("aria-valuenow"))).toBe(original + 10);
+    await userEvent.dblClick(restored);
+    await expect(Number(restored.getAttribute("aria-valuenow"))).toBe(original);
+    await expect(localStorage.getItem("r3-filebrowser-width")).toBeNull();
+  },
+};
+
+export const PersistenceUnavailable: Story = {
+  beforeEach: () => {
+    const keys = new Set(["r3-filebrowser-collapsed", "r3-filebrowser-width"]);
+    for (const key of keys) writeDisplayPreference(key, null);
+    const originalSet = Storage.prototype.setItem;
+    const originalRemove = Storage.prototype.removeItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (this === localStorage && keys.has(key))
+        throw new DOMException("Storage unavailable", "QuotaExceededError");
+      originalSet.call(this, key, value);
+    };
+    Storage.prototype.removeItem = function (key) {
+      if (this === localStorage && keys.has(key))
+        throw new DOMException("Storage unavailable", "QuotaExceededError");
+      originalRemove.call(this, key);
+    };
+    return () => {
+      Storage.prototype.setItem = originalSet;
+      Storage.prototype.removeItem = originalRemove;
+      for (const key of keys) writeDisplayPreference(key, null);
+    };
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const handle = canvas.getByRole("separator", { name: "Resize file panel" });
+    const original = Number(handle.getAttribute("aria-valuenow"));
+    handle.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    await expect(Number(handle.getAttribute("aria-valuenow"))).toBe(original + 10);
     await userEvent.click(canvas.getByTitle("Hide files"));
     await userEvent.click(canvas.getByTitle("Show files"));
     const restored = canvas.getByRole("separator", { name: "Resize file panel" });

@@ -8,13 +8,14 @@ import {
   useRef,
   useState,
 } from "react";
+import { readDisplayPreference, writeDisplayPreference } from "./display-storage.ts";
 
 type Rect = { x: number; y: number; width: number; height: number };
 export type PanelEdge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 const storageKey = "r3-feedback-floating-rect";
 function readRect(): Rect | null {
   try {
-    const value = JSON.parse(localStorage.getItem(storageKey) ?? "null");
+    const value = JSON.parse(readDisplayPreference(storageKey) ?? "null");
     return value &&
       [value.x, value.y, value.width, value.height].every(Number.isFinite) &&
       value.width > 0 &&
@@ -75,7 +76,7 @@ export function useFloatingPanel(
     current.current = next;
     if (!old || Object.keys(next).some((key) => next[key as keyof Rect] !== old[key as keyof Rect]))
       setRect(next);
-    if (save) localStorage.setItem(storageKey, JSON.stringify(next));
+    if (save) writeDisplayPreference(storageKey, JSON.stringify(next));
   };
   const initialize = () => {
     if (!enabled) return;

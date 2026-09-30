@@ -1,6 +1,7 @@
 // Persisted external store: one value mirrored to localStorage via useSyncExternalStore.
 
 import { useSyncExternalStore } from "react";
+import { readDisplayPreference, writeDisplayPreference } from "./display-storage.ts";
 
 export function persistedStore<T>(
   key: string,
@@ -11,14 +12,13 @@ export function persistedStore<T>(
   },
 ) {
   const save = opts.save ?? ((v: T) => String(v));
-  let value = opts.load(localStorage.getItem(key));
+  let value = opts.load(readDisplayPreference(key));
   const listeners = new Set<() => void>();
   const get = () => value;
   const set = (next: T) => {
     value = next;
     const raw = save(value);
-    if (raw === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, raw);
+    writeDisplayPreference(key, raw);
     opts.onSet?.(value);
     for (const l of listeners) l();
   };

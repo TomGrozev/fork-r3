@@ -8,6 +8,7 @@ import type {
 } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { copyText } from "./clipboard.ts";
+import { readDisplayPreference, writeDisplayPreference } from "./display-storage.ts";
 import { suspendKeys } from "./keys.ts";
 
 // Custom auto-animate plugins BYPASS its built-in reduced-motion guard (index.mjs
@@ -75,7 +76,7 @@ export function useResizableWidth(
   }, [containerRef, clamp, defaultFraction, initial]);
 
   const [width, setWidth] = useState<number | undefined>(() => {
-    const saved = Number(localStorage.getItem(key));
+    const saved = Number(readDisplayPreference(key));
     if (Number.isFinite(saved) && saved > 0) return clamp(saved);
     // A fixed default seeds immediately; a fractional one waits for measurement.
     return initial != null ? clamp(initial) : undefined;
@@ -128,7 +129,7 @@ export function useResizableWidth(
         if (ev.pointerId !== e.pointerId) return;
         cleanupRef.current?.();
         setDragging(false);
-        if (ref.current !== undefined) localStorage.setItem(key, String(ref.current));
+        if (ref.current !== undefined) writeDisplayPreference(key, String(ref.current));
       };
       // Everything the drag installs, torn down in one place — run by pointerup on
       // a normal release and by the unmount effect below if the component goes away
@@ -159,7 +160,7 @@ export function useResizableWidth(
 
   // Double-click the handle → forget the saved width and snap back to the default.
   const onDoubleClick = useCallback(() => {
-    localStorage.removeItem(key);
+    writeDisplayPreference(key, null);
     const d = computeDefault();
     if (d !== undefined) setWidth(d);
   }, [key, computeDefault]);
@@ -177,7 +178,7 @@ export function useResizableWidth(
     const next = clamp((ref.current ?? computeDefault() ?? min) + delta);
     ref.current = next;
     setWidth(next);
-    localStorage.setItem(key, String(next));
+    writeDisplayPreference(key, String(next));
   };
   return { width, dragging, onPointerDown, onDoubleClick, onKeyDown };
 }

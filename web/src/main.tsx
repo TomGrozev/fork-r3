@@ -5,11 +5,12 @@ import { ArtifactApiError } from "../../shared/artifact-client.ts";
 import { App } from "./App.tsx";
 import { ApiError, loadBoot } from "./api.ts";
 import { Login } from "./components/Login.tsx";
+import { readDisplayPreference } from "./display-storage.ts";
 import { clampFont } from "./settings.ts";
 import "./main.css";
 
 // Restore the saved theme before first paint.
-const savedTheme = localStorage.getItem("r3-theme");
+const savedTheme = readDisplayPreference("r3-theme");
 const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 if (savedTheme === "dark" || (savedTheme == null && prefersDark)) {
   document.documentElement.classList.add("dark");
@@ -17,7 +18,7 @@ if (savedTheme === "dark" || (savedTheme == null && prefersDark)) {
 // Clamp/validate here too: the store's clampFont only runs inside get/set, not on
 // this raw boot read, so a corrupt or out-of-range stored value would otherwise be
 // applied verbatim at first paint. Ignore non-numeric values (leave the CSS default).
-const savedFont = Number(localStorage.getItem("r3-font-size"));
+const savedFont = Number(readDisplayPreference("r3-font-size"));
 if (Number.isFinite(savedFont) && savedFont > 0) {
   document.documentElement.style.setProperty("--r3-font-size", `${clampFont(savedFont)}px`);
 }

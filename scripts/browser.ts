@@ -1,13 +1,17 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Real browser acceptance uses a caller-supplied Chromium executable. No package
 // download, browser installation, user profile, or running daemon is involved.
-export async function openTestBrowser(flags: string[] = []) {
+export async function openTestBrowser(flags: string[] = [], preferences?: Record<string, unknown>) {
   const executable = process.env.R3_TEST_BROWSER;
   if (!executable) throw new Error("Set R3_TEST_BROWSER to a Chromium executable");
   const profile = await mkdtemp(join(tmpdir(), "r3-browser-"));
+  if (preferences) {
+    await mkdir(join(profile, "Default"));
+    await writeFile(join(profile, "Default", "Preferences"), JSON.stringify(preferences));
+  }
   const browser = Bun.spawn(
     [
       executable,

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { writeDisplayPreference } from "./display-storage.ts";
 
 const listeners = new Set<() => void>();
 let observer: MutationObserver | null = null;
@@ -27,7 +28,7 @@ export function useTheme(): [boolean, () => void] {
   const toggle = () => {
     const next = !dark;
     document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("r3-theme", next ? "dark" : "light");
+    writeDisplayPreference("r3-theme", next ? "dark" : "light");
   };
   return [dark, toggle];
 }
