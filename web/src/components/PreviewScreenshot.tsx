@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useId, useRef, useState } from "react";
 import type { ArtifactDocumentTarget } from "../../../shared/artifacts.ts";
 import { ATTACHMENT_LIMITS } from "../../../shared/attachments.ts";
 import { artifactDrafts } from "../artifact-drafts.ts";
@@ -31,6 +31,9 @@ export function PreviewScreenshot({
   const operation = useRef<AbortController | null>(null);
   const generation = useRef(0);
   const supported = canCapturePreview();
+  const hintId = useId();
+  const unavailableHint =
+    "Area capture is unavailable in this browser. Paste or attach a screenshot, or try desktop Chrome.";
   useEffect(() => {
     const cancel = () => {
       generation.current++;
@@ -96,18 +99,15 @@ export function PreviewScreenshot({
       <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 px-3 py-1.5 text-xs text-neutral-500 dark:border-neutral-800">
         <Button
           disabled={!supported || pending}
-          title={
-            supported
-              ? "Share this tab, then select an area"
-              : "Paste or attach a screenshot in feedback"
-          }
+          title={supported ? "Share this tab, then select an area" : unavailableHint}
+          aria-describedby={hintId}
           onClick={() => void begin()}
         >
           Capture area
         </Button>
         {pending ? (
           <>
-            <span>Choose this r3 tab in the browser sharing prompt.</span>
+            <span id={hintId}>Choose this r3 tab in the browser sharing prompt.</span>
             <Button
               onClick={() => {
                 operation.current?.abort();
@@ -119,9 +119,9 @@ export function PreviewScreenshot({
             </Button>
           </>
         ) : !supported ? (
-          <span>Paste or attach screenshots in feedback.</span>
+          <span id={hintId}>{unavailableHint}</span>
         ) : (
-          <span>Attach a screenshot to feedback</span>
+          <span id={hintId}>Attach a screenshot to feedback</span>
         )}
         {notice && <span role="status">{notice}</span>}
       </div>

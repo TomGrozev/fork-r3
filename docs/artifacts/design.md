@@ -718,7 +718,9 @@ referenced drafts are not evicted. Logout and artifact deletion revoke local ima
 bytes; an epoch prevents late work from repopulating storage across tabs.
 
 HTML previews offer Capture area where current-tab Region Capture and still-frame
-capture are available.
+capture are available. Otherwise the disabled control explains that browser
+capture is unavailable and offers paste/upload or a supported desktop browser;
+the same explanation is associated with the control for assistive technology.
 The trusted workspace opens the browser's sharing chooser, crops the tab stream
 to the preview iframe, freezes one frame, and stops every track before opening the
 crop editor. Only the selected crop enters the draft. Sharing denial, wrong-surface

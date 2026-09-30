@@ -66,7 +66,8 @@ Paste or attach images to notes and replies, including messages without text.
 For HTML artifacts, **Capture area** shares the current tab, freezes the preview,
 and lets you crop a screenshot before attaching it. **Edit image** adds pen, arrow,
 and rectangle drawings with color, stroke width, and undo/redo controls. Where browser capture is
-unavailable, paste or upload a screenshot. Messages accept up to four images,
+unavailable, the toolbar explains the limitation: paste or upload a screenshot,
+or use desktop Chrome with current-tab Region Capture support. Messages accept up to four images,
 each at most 5 MiB and 20 megapixels. Agents can use
 `r3 feedback fetch <artifact-id> --attachments-dir ./feedback-images` to save
 images before acknowledging feedback.
