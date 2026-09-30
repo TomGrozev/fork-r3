@@ -18,13 +18,46 @@ const blank = (): ArtifactDraft => ({
   context: { versionSeq: null, representation: null },
 });
 const prefix = "r3-artifact-draft-";
+const slotPrefix = "r3-artifact-draft-slot-";
+type Slot = string | null;
+const slotKey = (id: string, replyTo: Slot) => slotPrefix + JSON.stringify([id, replyTo]);
+const valid = (draft: ArtifactDraft | null) =>
+  draft === null ||
+  (typeof draft?.body === "string" &&
+    typeof draft.target?.kind === "string" &&
+    draft.context !== undefined);
+function parseSlotKey(key: string): [string, Slot] | null {
+  if (!key.startsWith(slotPrefix)) return null;
+  try {
+    const value = JSON.parse(key.slice(slotPrefix.length));
+    if (
+      Array.isArray(value) &&
+      value.length === 2 &&
+      typeof value[0] === "string" &&
+      (value[1] === null || typeof value[1] === "string")
+    )
+      return value as [string, Slot];
+  } catch {
+    /* Ignore unrelated or unreadable keys. */
+  }
+  return null;
+}
+function withDraft(drafts: Drafts, replyTo: Slot, draft: ArtifactDraft | null): Drafts {
+  if (replyTo === null) return { ...drafts, note: draft };
+  const replies = { ...drafts.replies };
+  if (draft === null) delete replies[replyTo];
+  else
+    Object.defineProperty(replies, replyTo, { value: draft, enumerable: true, configurable: true });
+  return { ...drafts, replies };
+}
 
 export class ArtifactDraftStore {
   private readonly cache = new Map<string, Drafts>();
   private readonly listeners = new Set<() => void>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly dirty = new Map<string, Set<Slot>>();
   constructor(
-    private readonly storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null,
+    private readonly storage: Pick<Storage, "getItem" | "setItem" | "length" | "key"> | null,
   ) {}
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -41,11 +74,6 @@ export class ArtifactDraftStore {
       const saved = this.storage?.getItem(prefix + id);
       if (saved) {
         const value = JSON.parse(saved) as Drafts;
-        const valid = (draft: ArtifactDraft | null) =>
-          draft === null ||
-          (typeof draft.body === "string" &&
-            typeof draft.target?.kind === "string" &&
-            draft.context !== undefined);
         if (
           valid(value.note) &&
           value.replies &&
@@ -78,6 +106,21 @@ export class ArtifactDraftStore {
     } catch {
       /* Unreadable storage leaves an in-memory composer available. */
     }
+    try {
+      for (let index = 0; index < (this.storage?.length ?? 0); index++) {
+        const key = this.storage!.key(index);
+        const slot = key && parseSlotKey(key);
+        if (!slot || slot[0] !== id) continue;
+        try {
+          const draft = JSON.parse(this.storage!.getItem(key) ?? "null");
+          if (valid(draft)) drafts = withDraft(drafts, slot[1], draft);
+        } catch {
+          /* A damaged draft does not hide the other drafts. */
+        }
+      }
+    } catch {
+      /* Storage may be unavailable even when its object was accessible. */
+    }
     this.cache.set(id, drafts);
     return drafts;
   }
@@ -97,14 +140,8 @@ export class ArtifactDraftStore {
     );
   }
   update(id: string, patch: Partial<ArtifactDraft>, replyTo?: string): void {
-    const drafts = this.load(id);
     const next = { ...(this.get(id, replyTo) ?? blank()), ...patch };
-    this.commit(
-      id,
-      replyTo
-        ? { ...drafts, replies: { ...drafts.replies, [replyTo]: next } }
-        : { ...drafts, note: next },
-    );
+    this.commit(id, next, replyTo ?? null);
   }
   anchor(id: string, target: ArtifactTarget): boolean {
     if (this.get(id)?.body.trim()) return false;
@@ -116,12 +153,7 @@ export class ArtifactDraftStore {
     this.update(id, { context }, replyTo);
   }
   clear(id: string, replyTo?: string): void {
-    const drafts = this.load(id);
-    if (replyTo) {
-      const replies = { ...drafts.replies };
-      delete replies[replyTo];
-      this.commit(id, { ...drafts, replies });
-    } else this.commit(id, { ...drafts, note: null });
+    this.commit(id, null, replyTo ?? null);
   }
   clearIfCurrent(id: string, submitted: ArtifactDraft, replyTo?: string): boolean {
     // A save can finish after another composer has resumed this draft. Object
@@ -131,14 +163,14 @@ export class ArtifactDraftStore {
     return true;
   }
   pruneReplies(id: string, feedbackIds: ReadonlySet<string>): void {
-    const drafts = this.load(id);
-    const entries = Object.entries(drafts.replies);
-    const retained = entries.filter(([feedbackId]) => feedbackIds.has(feedbackId));
-    if (retained.length !== entries.length)
-      this.commit(id, { ...drafts, replies: Object.fromEntries(retained) });
+    for (const feedbackId of Object.keys(this.load(id).replies))
+      if (!feedbackIds.has(feedbackId)) this.clear(id, feedbackId);
   }
-  private commit(id: string, drafts: Drafts): void {
-    this.cache.set(id, drafts);
+  private commit(id: string, draft: ArtifactDraft | null, replyTo: Slot): void {
+    this.cache.set(id, withDraft(this.load(id), replyTo, draft));
+    const dirty = this.dirty.get(id) ?? new Set<Slot>();
+    dirty.add(replyTo);
+    this.dirty.set(id, dirty);
     for (const listener of this.listeners) listener();
     clearTimeout(this.timers.get(id));
     this.timers.set(
@@ -150,13 +182,43 @@ export class ArtifactDraftStore {
     );
   }
   private persist(id: string): void {
-    try {
-      // Keep an empty record after clearing, so a retained legacy key is not
-      // imported again on reload. The original legacy value remains untouched.
-      this.storage?.setItem(prefix + id, JSON.stringify(this.load(id)));
-    } catch {
-      /* Quota/private mode: retain the current in-memory draft. */
+    for (const replyTo of this.dirty.get(id) ?? []) {
+      try {
+        // Independent drafts cannot overwrite one another. A null value keeps
+        // cleared drafts from being imported again from retained legacy keys.
+        this.storage?.setItem(
+          slotKey(id, replyTo),
+          JSON.stringify(this.get(id, replyTo ?? undefined)),
+        );
+      } catch {
+        /* Quota/private mode: retain the current in-memory draft. */
+      }
     }
+    this.dirty.delete(id);
+  }
+  sync(key: string | null): void {
+    if (key === null) {
+      for (const timer of this.timers.values()) clearTimeout(timer);
+      this.timers.clear();
+      this.dirty.clear();
+      this.cache.clear();
+    } else {
+      const slot = parseSlotKey(key);
+      if (!slot || !this.cache.has(slot[0])) return;
+      const [id, replyTo] = slot;
+      // Let local typing finish its debounce; that later save will be shared.
+      if (this.dirty.get(id)?.has(replyTo)) return;
+      try {
+        // Read the latest value: an event can arrive after another tab's write.
+        const draft = JSON.parse(this.storage?.getItem(key) ?? "null");
+        if (!valid(draft)) return;
+        if (JSON.stringify(this.get(id, replyTo ?? undefined)) === JSON.stringify(draft)) return;
+        this.cache.set(id, withDraft(this.load(id), replyTo, draft));
+      } catch {
+        return;
+      }
+    }
+    for (const listener of this.listeners) listener();
   }
   flush(): void {
     for (const [id, timer] of this.timers) {
@@ -186,6 +248,9 @@ export const useArtifactNoteOpen = (id: string) =>
 export const useArtifactDraftCount = (id: string) =>
   useSyncExternalStore(artifactDrafts.subscribe, () => artifactDrafts.count(id));
 if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.storageArea === browserStorage()) artifactDrafts.sync(event.key);
+  });
   window.addEventListener("pagehide", () => artifactDrafts.flush());
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) artifactDrafts.flush();

@@ -383,6 +383,12 @@ Long conversations fold earlier replies. Nonempty drafts block handoff until pos
 for deleted threads are removed; resolving or archiving keeps them. Folding the
 dock or closing the mobile sheet disables its conversation shortcuts.
 
+Within one browser origin, tabs share one new-feedback draft per artifact and one
+reply draft per thread. Edits persist after a 400 ms debounce and update other
+tabs through storage events. The latest saved edit wins when tabs edit the same
+draft; independent drafts use separate storage keys. Clearing a draft also
+propagates. Older browser drafts remain readable until replaced or discarded.
+
 The desktop feedback panel has three persisted display states:
 
 - **Hidden:** the content fills the workspace; anchors can open individual threads.

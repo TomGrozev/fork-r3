@@ -40,7 +40,7 @@ await storage.artifacts.publish(artifact.id, {
   },
 });
 storage.artifacts.registerSession({ id: "feedback-test-agent" });
-await storage.conversations.add(artifact.id, {
+const discussion = await storage.conversations.add(artifact.id, {
   actor: { role: "agent", sessionId: "feedback-test-agent" },
   body: "Earlier conversation",
   target: { kind: "artifact" },
@@ -58,6 +58,7 @@ let postedId: string | undefined;
 const app = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
+  idleTimeout: 30,
   async fetch(request) {
     const path = new URL(request.url).pathname;
     if (request.method === "POST" && path === `/api/artifacts/${artifact.id}/feedback`) {
@@ -191,8 +192,85 @@ try {
   await saved("Retain this failed draft", 4);
   assert.deepEqual(await page.evaluate("window.feedbackMotions"), []);
   assert.equal(storage.conversations.list(artifact.id).length, 4);
+
+  const { targetId: otherTarget } = await browser.send("Target.createTarget", {
+    url: "about:blank",
+  });
+  const other = await browser.attach(otherTarget);
+  await other.command("Emulation.setDeviceMetricsOverride", {
+    width: 1400,
+    height: 1000,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await other.command("Page.navigate", { url: `http://localhost:${app.port}/` });
+  await eventually(
+    () =>
+      other.evaluate("document.querySelectorAll('[data-feedback-list] > article').length === 4"),
+    "second tab workspace",
+  );
+  const edit = async (tab: typeof page, field: string, body: string) => {
+    await tab.evaluate(`${field}.focus(); ${field}.select()`);
+    await tab.command("Input.insertText", { text: body });
+  };
+  await page.evaluate("document.querySelector('[aria-label=\"Add general feedback\"]').click()");
+  await eventually(() => page.evaluate(`!!(${input})`), "shared-note composer");
+  await edit(page, input, "Shared note from the first tab");
+  await eventually(
+    () => other.evaluate(`${input}?.value === 'Shared note from the first tab'`),
+    "note appears in the second tab",
+  );
+  await edit(other, input, "Latest shared note");
+  await eventually(
+    () => page.evaluate(`${input}?.value === 'Latest shared note'`),
+    "latest note edit reaches the first tab",
+  );
+
+  const replyInput = `document.querySelector('[data-reply-to="${discussion.id}"] textarea')`;
+  const openReply = async (tab: typeof page) => {
+    await tab.evaluate(
+      `document.querySelector('[data-artifact-feedback="${discussion.id}"] [data-feedback-action=reply]').click()`,
+    );
+    await eventually(() => tab.evaluate(`!!(${replyInput})`), "shared-reply composer");
+  };
+  await openReply(page);
+  await openReply(other);
+  await edit(page, replyInput, "Independent shared reply");
+  await eventually(
+    () => other.evaluate(`${replyInput}?.value === 'Independent shared reply'`),
+    "reply edit reaches the other tab",
+  );
+  assert.equal(await other.evaluate(`${input}.value`), "Latest shared note");
+  await other.command("Page.reload");
+  await eventually(
+    () => other.evaluate(`${input}?.value === 'Latest shared note'`),
+    "shared note survives reload",
+  );
+  await openReply(other);
+  assert.equal(await other.evaluate(`${replyInput}.value`), "Independent shared reply");
+  await other.evaluate(
+    `[...${input}.form.querySelectorAll('button')].find(b=>b.textContent==='Discard').click()`,
+  );
+  // Activate the tab so its exit animation can finish; background tabs pause
+  // animation frames even though their storage events have already arrived.
+  await page.command("Page.bringToFront");
+  await eventually(() => page.evaluate(`!(${input})`), "discard clears the other tab's note");
+  assert.equal(await page.evaluate(`${replyInput}.value`), "Independent shared reply");
+  await page.evaluate(`${replyInput}.form.requestSubmit()`);
+  await other.command("Page.bringToFront");
+  await eventually(
+    () => other.evaluate(`${replyInput}?.value === ''`),
+    "posted reply clears the other tab's draft",
+  );
+  assert.equal(
+    storage.conversations
+      .list(artifact.id)
+      .find((note) => note.id === discussion.id)
+      ?.replies.at(-1)?.body,
+    "Independent shared reply",
+  );
   console.log(
-    "Feedback creation: newest-first save, composer morph, early SSE and concurrent reply, duplicate avoidance, failed draft, retry, and reduced motion passed.",
+    "Feedback creation: save/morph, early SSE and concurrent reply, retry, reduced motion, shared drafts across tabs, last saved edit, reload, discard, and reply cleanup passed.",
   );
 } finally {
   releasePost?.();
