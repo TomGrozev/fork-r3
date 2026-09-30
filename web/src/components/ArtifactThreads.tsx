@@ -33,6 +33,7 @@ import {
   feedbackAnimation,
   useFeedbackTabIndicator,
 } from "../feedback-motion.ts";
+import { type ImageInsertion, imageMessageBody } from "../image-placeholders.ts";
 import { useKeyBindings } from "../keys.ts";
 import type { MessageRef } from "../markdown.ts";
 import {
@@ -224,13 +225,26 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
       void refresh();
     },
   });
-  const changeImages = (change: (images: EditableImage[]) => EditableImage[]) =>
-    setEditing((held) => (held ? { ...held, attachments: change(held.attachments) } : null));
+  const editTextarea = useRef<HTMLTextAreaElement>(null);
+  const changeImages = (
+    change: (images: EditableImage[]) => EditableImage[],
+    insertion?: ImageInsertion,
+  ) =>
+    setEditing((held) => {
+      if (!held) return null;
+      const attachments = change(held.attachments);
+      return {
+        ...held,
+        attachments,
+        body: imageMessageBody(held.body, held.attachments, attachments, insertion),
+      };
+    });
   const attachmentInput = useAttachmentInput(
     feedback.artifactId,
     editing?.attachments ?? [],
     changeImages,
     edit.isPending,
+    editTextarea,
   );
   const status = useFeedbackStatus(feedback);
   const remove = useMutation({
@@ -331,6 +345,7 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
       }}
     >
       <MessageInput
+        inputRef={editTextarea}
         aria-label="Edit message"
         value={editing.body}
         onChange={(event) => setEditing({ ...editing, body: event.target.value })}
@@ -554,12 +569,6 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
           <ArtifactComposer
             artifactId={feedback.artifactId}
             replyTo={feedback.id}
-            leadingActions={
-              <>
-                {resolveButton}
-                {moreMenu}
-              </>
-            }
             onDone={() => setReplying(false)}
           />
         </div>

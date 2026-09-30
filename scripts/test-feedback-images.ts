@@ -113,20 +113,29 @@ try {
   await page.command("Emulation.clearDeviceMetricsOverride");
   await page.command("Page.navigate", { url: `http://localhost:${app.port}/?version=1` });
   const button = (label: string) =>
-    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(label)})`;
+    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(label)} || b.getAttribute('aria-label')===${JSON.stringify(label)})`;
   const input = "document.querySelector('[data-artifact-composer]:not([data-reply-to]) textarea')";
   await eventually(async () => {
     await page.evaluate(`${button("Accept risk and continue")}?.click()`);
     return page.evaluate(`!!${button("Capture area")}`);
   }, "HTML capture control");
+  assert(await page.evaluate(`!!${button("Capture area")}.closest('[data-preview-capture-slot]')`));
+  assert(await page.evaluate(`!!${button("Capture area")}.closest('header')`));
+  assert.equal(
+    await page.evaluate(
+      "document.querySelector('[data-preview-capture-slot]').previousElementSibling.getAttribute('aria-label')",
+    ),
+    "Comment mode",
+  );
   await page.evaluate("document.querySelector('[aria-label=\"Add general feedback\"]').click()");
   await eventually(() => page.evaluate(`!!(${input})`), "composer");
-  const paste = async (selector: string) =>
+  const paste = async (selector: string, plainText = "") =>
     page.evaluate(`(() => {
     const canvas=document.createElement('canvas'); canvas.width=160;canvas.height=90;
     const ctx=canvas.getContext('2d');ctx.fillStyle='#f05020';ctx.fillRect(0,0,160,90);ctx.fillStyle='#ffffff';ctx.fillText('Image feedback',10,30);
     return new Promise(resolve=>canvas.toBlob(blob=>{
       const data=new DataTransfer();data.items.add(new File([blob],'image.png',{type:'image/png'}));
+      if (${JSON.stringify(plainText)}) data.setData('text/plain', ${JSON.stringify(plainText)});
       (${selector}).dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data}));resolve(true);
     },'image/png'));
   })()`);
@@ -140,7 +149,32 @@ try {
     () => page.evaluate("!!document.querySelector('[data-artifact-composer] img')"),
     "image draft restored from IndexedDB",
   );
-  assert.equal(await page.evaluate(`${input}.value`), "");
+  assert.equal(await page.evaluate(`${input}.value`), " [image1] ");
+  // File selection inserts at the retained caret; removing a middle image keeps
+  // the remaining labels aligned with their ordered attachments.
+  await page.evaluate(`(()=>{
+    const field=${input};field.focus();field.setSelectionRange(field.value.length,field.value.length);
+    const canvas=document.createElement('canvas');canvas.width=20;canvas.height=20;
+    return new Promise(resolve=>canvas.toBlob(blob=>{
+      const data=new DataTransfer();for(const name of ['second.png','third.png'])data.items.add(new File([blob],name,{type:'image/png'}));
+      const files=field.form.querySelector('input[type=file]');files.files=data.files;files.dispatchEvent(new Event('change',{bubbles:true}));resolve(true);
+    },'image/png'));
+  })()`);
+  await eventually(
+    () => page.evaluate("document.querySelectorAll('[data-artifact-composer] img').length===3"),
+    "file attachments",
+  );
+  assert.equal(await page.evaluate(`${input}.value`), " [image1] [image2] [image3] ");
+  const removeSecond = () =>
+    page.evaluate(
+      "Array.from(document.querySelectorAll('[data-artifact-composer] button')).filter(button=>button.textContent==='Remove')[1].click()",
+    );
+  await removeSecond();
+  assert.equal(await page.evaluate(`${input}.value`), " [image1]  [image2] ");
+  await removeSecond();
+  await page.evaluate(
+    `(()=>{const field=${input};Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(field,' [image1] ');field.dispatchEvent(new Event('input',{bubbles:true}));})()`,
+  );
   const editorCanvas = "document.querySelector('dialog[open] canvas')";
   const openEditor = async () => {
     await page.evaluate(`${button("Edit image")}.click()`);
@@ -322,7 +356,7 @@ try {
     "image-only note saved",
   );
   const note = storage.conversations.list(artifact.id)[0]!;
-  assert.equal(note.body, "");
+  assert.equal(note.body, " [image1] ");
   assert.equal(note.attachments?.length, 1);
   assert.equal(note.attachments![0]!.width, 160);
   const drawnImage = await storage.artifacts.attachments.read(
@@ -346,11 +380,39 @@ try {
   );
   const replyInput = "document.querySelector('[data-reply-to] textarea')";
   await eventually(() => page.evaluate(`!!(${replyInput})`), "reply composer");
-  await paste(replyInput);
+  assert.equal(
+    await page.evaluate(
+      "!!document.querySelector('[data-reply-to] [data-feedback-action=resolve], [data-reply-to] [aria-label=\"More actions\"]')",
+    ),
+    false,
+  );
+  assert(
+    await page.evaluate(
+      "document.querySelector('[data-reply-to] button[title]')?.title.includes('paste an image directly')",
+    ),
+  );
+  await page.evaluate(
+    `(()=>{const field=${replyInput};Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(field,'Beforeafter');field.dispatchEvent(new Event('input',{bubbles:true}));field.focus();field.setSelectionRange(6,6)})()`,
+  );
+  await page.evaluate(
+    "window.originalImageDecode=window.createImageBitmap;window.createImageBitmap=(blob)=>new Promise((resolve,reject)=>{window.releaseImageDecode=()=>window.originalImageDecode(blob).then(resolve,reject)})",
+  );
+  await paste(replyInput, " caption");
+  assert.equal(await page.evaluate(`${replyInput}.value`), "Before caption [image1] after");
+  assert.equal(await page.evaluate(`${replyInput}.selectionStart`), 24);
+  await page.command("Input.insertText", { text: "detail " });
+  await eventually(
+    () => page.evaluate("typeof window.releaseImageDecode === 'function'"),
+    "pending image decode",
+  );
+  await page.evaluate(
+    "window.createImageBitmap=window.originalImageDecode;window.releaseImageDecode()",
+  );
   await eventually(
     () => page.evaluate("!!document.querySelector('[data-reply-to] img')"),
     "reply image preview",
   );
+  assert.equal(await page.evaluate(`${replyInput}.value`), "Before caption [image1] detail after");
   await page.evaluate(`${replyInput}.form.requestSubmit()`);
   await eventually(
     () => Promise.resolve(storage.conversations.get(note.id).replies.length === 1),
@@ -419,6 +481,7 @@ try {
     "screenshot saved",
   );
   const screenshot = storage.conversations.list(artifact.id)[1]!;
+  assert.equal(screenshot.body, " [image1] ");
   assert.equal(screenshot.target.kind, "rendered");
   assert.equal(screenshot.attachments![0]!.width, 100);
   assert.equal(screenshot.attachments![0]!.height, 80);

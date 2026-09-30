@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 import { artifactApi } from "../artifact-api.ts";
 import { artifactFixture, artifactFixtureFeedback } from "../artifact-fixtures.ts";
@@ -10,6 +11,7 @@ import {
   ArtifactPreviewSecurityProvider,
   ArtifactPreviewSecuritySource,
 } from "./ArtifactPreviewSecurity.tsx";
+import { PreviewScreenshot } from "./PreviewScreenshot.tsx";
 import { ShortcutsOverlay } from "./ShortcutsOverlay.tsx";
 
 const meta = {
@@ -27,6 +29,30 @@ function resetHandoffReceipt() {
   );
 }
 export const Active: Story = {};
+export const HtmlCapture: Story = {
+  args: { detail: { ...artifactFixture, kind: "html" } },
+  render: (args) => {
+    const [container, setContainer] = useState<HTMLDivElement | null>(null);
+    const frame = useRef<HTMLIFrameElement>(null);
+    return (
+      <>
+        <ArtifactHeader {...args} captureRef={setContainer} onToggleCommenting={() => {}} />
+        {container &&
+          createPortal(
+            <PreviewScreenshot
+              artifactId={args.detail.id}
+              versionSeq={1}
+              path="index.html"
+              frame={frame}
+              onTarget={() => {}}
+            />,
+            container,
+          )}
+      </>
+    );
+  },
+};
+export const HtmlCaptureDark: Story = { ...HtmlCapture, globals: { theme: "dark" } };
 export const NamedPublisher: Story = {
   parameters: {
     queryData: [

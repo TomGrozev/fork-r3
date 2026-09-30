@@ -61,7 +61,8 @@ Images: static PNG/JPEG, at most four per message, 5 MiB and 20 megapixels each.
 A message needs text or an image. Editing with --attach replaces all images;
 omitting it preserves them. --clear-attachments removes them (text must remain).
 Use the same --key to retry an unchanged add/reply after an uncertain response.
-Image references are included in fetch output. --attachments-dir downloads and
+Image references are numbered [image1], [image2], etc. within each message in
+fetch output. --attachments-dir downloads and
 verifies the snapshot's images before output and acknowledgment; failures leave
 feedback pending. Existing matching files are reused; different files are not overwritten.
 Text flags accept - to read stdin. --json prints structured results.
@@ -154,7 +155,7 @@ When no agent is listening, the web UI's **Use in agent** button shows a copyabl
 
 \`r3 claim <feedback-id>...\` accepts multiple IDs, as shown above. Claims are renewable 60-minute leases; another live holder conflicts. Use \`r3 release <feedback-id>...\` when abandoning work. A resolved-status notification needs no action.
 
-Feedback may include images. Download them with the supplied \`r3 feedback image\` command and open them with your harness's image-viewing tool before responding. A text reference does not load pixels into the model. Alternatively, \`r3 feedback fetch <id> --attachments-dir ./feedback-images\` downloads and verifies all images in the snapshot before acknowledging it. Capture context describes observed pixels; it does not establish a selector or source line. Use repeatable \`--attach <image>\` on feedback and replies to provide visual evidence.
+Feedback may include images. Labels such as \`[image1]\` refer to the numbered attachment in that same note or reply. Download them with the supplied \`r3 feedback image\` command and open them with your harness's image-viewing tool before responding. A text reference does not load pixels into the model. Alternatively, \`r3 feedback fetch <id> --attachments-dir ./feedback-images\` downloads and verifies all images in the snapshot before acknowledging it. Capture context describes observed pixels; it does not establish a selector or source line. Use repeatable \`--attach <image>\` on feedback and replies to provide visual evidence.
 
 Inspect original targets in their recorded version and representation. Rendered selectors, quotes, routes, and viewports describe the published page, not source lines. Reuse matching local source when revising your own publication; retrieve published content only when needed, such as an older version or another agent's work. Inspection/download commands are in \`r3 --help\`.
 

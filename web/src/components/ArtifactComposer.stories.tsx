@@ -38,6 +38,31 @@ export const ImageOnly: Story = {
   ],
 };
 export const ImageOnlyDark: Story = { ...ImageOnly, globals: { theme: "dark" } };
+export const PasteAtCursor: Story = {
+  args: { artifactId: "artifact_paste_composer" },
+  beforeEach: () => {
+    artifactDrafts.clear("artifact_paste_composer");
+    return () => artifactDrafts.clear("artifact_paste_composer");
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const input = canvas.getByRole("textbox") as HTMLTextAreaElement;
+    await userEvent.type(input, "Beforeafter");
+    input.setSelectionRange(6, 6);
+    const data = new DataTransfer();
+    data.items.add(new File([await exampleImage()], "example.png", { type: "image/png" }));
+    input.dispatchEvent(
+      new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }),
+    );
+    await waitFor(() => expect(input).toHaveValue("Before [image1] after"));
+    await expect(input.selectionStart).toBe(16);
+    await expect(canvas.getByRole("button", { name: "Attach image" })).toHaveAttribute(
+      "title",
+      "Attach an image, or paste an image directly into the text input",
+    );
+  },
+};
+export const PasteAtCursorDark: Story = { ...PasteAtCursor, globals: { theme: "dark" } };
 export const KeepDraftOnEscape: Story = {
   args: { artifactId: "artifact_persisted_composer" },
   play: async ({ canvasElement }) => {

@@ -4,13 +4,13 @@ import type {
   ArtifactNudge,
   ArtifactTarget,
 } from "./artifacts.ts";
-import type { ArtifactAttachment } from "./attachments.ts";
+import { type ArtifactAttachment, imagePlaceholder } from "./attachments.ts";
 
 export function attachmentPrompt(images: ArtifactAttachment[] = []): string {
   return images
     .map(
-      (image) =>
-        `Image ${image.id} (${image.mediaType}, ${image.width}×${image.height}, ${image.byteLength} bytes)${image.capture ? `\nCapture context: ${JSON.stringify(image.capture)}` : ""}\nDownload: r3 feedback image ${image.artifactId} --image ${image.id} --output ${image.id}.${image.mediaType === "image/png" ? "png" : "jpg"}`,
+      (image, index) =>
+        `${imagePlaceholder(index + 1)} Image ${image.id} (${image.mediaType}, ${image.width}×${image.height}, ${image.byteLength} bytes)${image.capture ? `\nCapture context: ${JSON.stringify(image.capture)}` : ""}\nDownload: r3 feedback image ${image.artifactId} --image ${image.id} --output ${image.id}.${image.mediaType === "image/png" ? "png" : "jpg"}`,
     )
     .join("\n");
 }

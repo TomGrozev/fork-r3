@@ -5,6 +5,8 @@ export const ATTACHMENT_LIMITS = {
   requestBytes: 32 * 1024 * 1024,
 } as const;
 
+export const imagePlaceholder = (number: number): string => `[image${number}]`;
+
 export interface AttachmentCapture {
   versionSeq: number;
   path: string;

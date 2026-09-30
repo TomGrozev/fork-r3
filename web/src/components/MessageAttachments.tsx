@@ -1,8 +1,10 @@
-import { type ClipboardEvent, useEffect, useRef, useState } from "react";
+import { type ClipboardEvent, type RefObject, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   type ArtifactAttachment,
   ATTACHMENT_LIMITS,
   type AttachmentInput,
+  imagePlaceholder,
 } from "../../../shared/attachments.ts";
 import { artifactApi } from "../artifact-api.ts";
 import {
@@ -11,6 +13,7 @@ import {
   draftImages,
   prepareDraftImage,
 } from "../attachment-drafts.ts";
+import { type ImageInsertion, insertImagePlaceholders } from "../image-placeholders.ts";
 import { suspendKeys } from "../keys.ts";
 import { Button } from "../ui.tsx";
 import { ImageEditor } from "./ImageEditor.tsx";
@@ -19,7 +22,10 @@ export type EditableImage = (DraftAttachment | ArtifactAttachment) & {
   pending?: boolean;
   error?: string;
 };
-type ChangeImages = (change: (images: EditableImage[]) => EditableImage[]) => void;
+type ChangeImages = (
+  change: (images: EditableImage[]) => EditableImage[],
+  insertion?: ImageInsertion,
+) => void;
 export async function imageBlob(image: EditableImage): Promise<Blob> {
   if (image.error) throw new Error(image.error);
   if (image.pending) throw new Error("Wait for the image to finish processing");
@@ -148,8 +154,9 @@ export function MessageAttachments({
   return (
     <>
       <div className="grid grid-cols-2 gap-2 py-2">
-        {images.map((image) => (
+        {images.map((image, index) => (
           <div key={image.id}>
+            <p className="mb-1 font-mono text-xs text-neutral-500">{imagePlaceholder(index + 1)}</p>
             <AttachmentImage
               artifactId={artifactId}
               image={image}
@@ -253,12 +260,14 @@ export function useAttachmentInput(
   images: EditableImage[],
   onChange: ChangeImages,
   disabled: boolean,
+  textarea: RefObject<HTMLTextAreaElement | null>,
 ) {
   const current = useRef({ images, onChange, disabled });
   current.current = { images, onChange, disabled };
   const [notice, setNotice] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  const add = async (files: Blob[]) => {
+  const add = async (files: Blob[], text = "") => {
+    if (!files.length) return;
     if (current.current.disabled) return;
     if (current.current.images.length + files.length > ATTACHMENT_LIMITS.count) {
       setNotice("A message can contain at most four images");
@@ -266,28 +275,46 @@ export function useAttachmentInput(
     }
     setNotice("");
     const change = current.current.onChange;
+    const node = textarea.current;
+    const insertion = node
+      ? { start: node.selectionStart, end: node.selectionEnd, text }
+      : undefined;
+    const inserted = node
+      ? insertImagePlaceholders(
+          node.value,
+          current.current.images.length + 1,
+          files.length,
+          insertion,
+        )
+      : null;
     const pending = files.map((file) => ({ file, id: crypto.randomUUID() }));
     let accepted = true;
-    change((items) => {
-      if (items.length + files.length > ATTACHMENT_LIMITS.count) {
-        accepted = false;
-        return items;
-      }
-      return [
-        ...items,
-        ...pending.map(({ file, id }) => ({
-          id,
-          width: 0,
-          height: 0,
-          byteLength: file.size,
-          mediaType: "image/png" as const,
-          pending: true,
-        })),
-      ];
-    });
+    flushSync(() =>
+      change((items) => {
+        if (items.length + files.length > ATTACHMENT_LIMITS.count) {
+          accepted = false;
+          return items;
+        }
+        return [
+          ...items,
+          ...pending.map(({ file, id }) => ({
+            id,
+            width: 0,
+            height: 0,
+            byteLength: file.size,
+            mediaType: "image/png" as const,
+            pending: true,
+          })),
+        ];
+      }, insertion),
+    );
     if (!accepted) {
       setNotice("A message can contain at most four images");
       return;
+    }
+    if (node?.isConnected && inserted) {
+      node.focus({ preventScroll: true });
+      node.setSelectionRange(inserted.caret, inserted.caret);
     }
     for (const { file, id } of pending) {
       try {
@@ -319,9 +346,12 @@ export function useAttachmentInput(
           return file ? [file] : [];
         });
       if (!files.length || disabled) return;
-      // Preserve accompanying plain text through the textarea's native paste.
-      if (!event.clipboardData.getData("text/plain")) event.preventDefault();
-      void add(files);
+      const text = event.clipboardData.getData("text/plain");
+      // Insert text and labels together at the captured caret before any image
+      // decoding finishes. A later keystroke cannot move or overwrite the labels.
+      const full = current.current.images.length + files.length > ATTACHMENT_LIMITS.count;
+      if (!full || !text) event.preventDefault();
+      void add(files, text);
     },
     controls: (
       <>
@@ -340,6 +370,7 @@ export function useAttachmentInput(
         <Button
           type="button"
           disabled={disabled || images.length >= ATTACHMENT_LIMITS.count}
+          title="Attach an image, or paste an image directly into the text input"
           onClick={() => input.current?.click()}
         >
           Attach image

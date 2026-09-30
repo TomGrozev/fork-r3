@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useContext, useRef } from "react";
+import { useContext, useRef } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { artifactTargetLabel } from "../../../shared/artifact-prompt.ts";
 import type { ArtifactDetail } from "../../../shared/artifacts.ts";
@@ -8,6 +8,7 @@ import { artifactApi } from "../artifact-api.ts";
 import { type ArtifactDraft, artifactDrafts, useArtifactDraft } from "../artifact-drafts.ts";
 import { withSavedReply } from "../artifact-feedback.ts";
 import { FeedbackCreationContext, prepareFeedbackMorph } from "../feedback-motion.ts";
+import { type ImageInsertion, imageMessageBody } from "../image-placeholders.ts";
 import { Button, cn } from "../ui.tsx";
 import {
   type EditableImage,
@@ -24,19 +25,18 @@ export function ArtifactComposer({
   replyTo,
   onDone,
   floating,
-  leadingActions,
 }: {
   artifactId: string;
   replyTo?: string;
   onDone?: () => void;
   floating?: { left: number; top: number; bottom: number; onClose: () => void };
-  leadingActions?: ReactNode;
 }) {
   const draft = useArtifactDraft(artifactId, replyTo);
   const retiredTarget =
     !replyTo &&
     (draft?.target.kind === "version_summary" || draft?.target.kind === "artifact_summary");
   const formElement = useRef<HTMLFormElement>(null);
+  const textarea = useRef<HTMLTextAreaElement>(null);
   const qc = useQueryClient();
   const showCreated = useContext(FeedbackCreationContext);
   const post = useMutation({
@@ -85,12 +85,22 @@ export function ArtifactComposer({
       void qc.invalidateQueries({ queryKey: ["artifacts"] });
     },
   });
-  const changeImages = (change: (images: EditableImage[]) => EditableImage[]) => {
+  const changeImages = (
+    change: (images: EditableImage[]) => EditableImage[],
+    insertion?: ImageInsertion,
+  ) => {
     const held = artifactDrafts.get(artifactId, replyTo);
     const before = held?.attachments ?? [];
     const after = change(before);
     if (before.length === after.length && before.every((image, i) => image === after[i])) return;
-    artifactDrafts.update(artifactId, { attachments: after }, replyTo);
+    artifactDrafts.update(
+      artifactId,
+      {
+        attachments: after,
+        body: imageMessageBody(held?.body ?? "", before, after, insertion),
+      },
+      replyTo,
+    );
     artifactDrafts.flush();
   };
   const attachments = useAttachmentInput(
@@ -98,6 +108,7 @@ export function ArtifactComposer({
     draft?.attachments ?? [],
     changeImages,
     post.isPending,
+    textarea,
   );
   const context = draft?.context;
   const form = (
@@ -179,6 +190,7 @@ export function ArtifactComposer({
           </blockquote>
         )}
       <MessageInput
+        inputRef={textarea}
         aria-label={replyTo ? "Reply" : "Feedback"}
         placeholder={replyTo ? "Write a reply…" : "Write feedback…"}
         disabled={post.isPending}
@@ -219,7 +231,6 @@ export function ArtifactComposer({
         </p>
       )}
       <div className="flex items-center gap-2 px-3">
-        {leadingActions}
         {attachments.controls}
         <span className="flex-1" />
         <Button

@@ -228,6 +228,20 @@ export const QuoteInReply: Story = {
   },
 };
 export const QuoteInReplyDark: Story = { ...QuoteInReply, globals: { theme: "dark" } };
+export const ReplyActions: Story = {
+  beforeEach: () => {
+    artifactDrafts.clear(artifactFixture.id, artifactFixtureFeedback.id);
+    return () => artifactDrafts.clear(artifactFixture.id, artifactFixtureFeedback.id);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getAllByRole("button", { name: "Reply" })[0]!);
+    const form = canvasElement.querySelector<HTMLElement>("[data-reply-to]")!;
+    await expect(within(form).queryByRole("button", { name: /Resolve|Reopen/ })).toBeNull();
+    await expect(within(form).queryByRole("button", { name: "More actions" })).toBeNull();
+    await expect(within(form).getByRole("button", { name: "Attach image" })).toBeVisible();
+  },
+};
 export const LatestLabelsFollowPublication: Story = {
   render: (args) => {
     const [detail, setDetail] = useState(args.detail);

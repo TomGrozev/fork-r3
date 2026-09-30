@@ -706,6 +706,12 @@ not a selector, source location, or claim of reproducible dynamic page state.
 The composer accepts user-initiated paste and image file selection. Browser inputs
 are normalized to static PNG; WebP input is also accepted by that normalization.
 Thumbnails have Edit image and Remove controls; posted images open in a modal viewer.
+Each addition inserts a message-local `[image1]`, `[image2]`, etc. placeholder with
+spaces around it. Paste inserts at the cursor and preserves accompanying plain
+text, before image preparation starts; subsequent typing stays intact. File
+selection uses the retained caret and captures append to the draft. Removing an
+image removes its references and renumbers later references and thumbnails;
+replacing its bytes retains its position. Agent output uses the same labels.
 The same controls serve notes, replies, message edits, floating composers, and the
 mobile sheet. Pending or failed images count as draft content and block posting
 until prepared or removed. Images do not silently replace a populated target.
@@ -718,9 +724,10 @@ referenced drafts are not evicted. Logout and artifact deletion revoke local ima
 bytes; an epoch prevents late work from repopulating storage across tabs.
 
 HTML previews offer Capture area where current-tab Region Capture and still-frame
-capture are available. Otherwise the disabled control explains that browser
-capture is unavailable and offers paste/upload or a supported desktop browser;
-the same explanation is associated with the control for assistive technology.
+capture are available. Its single camera icon sits beside Comment mode in the
+navbar, is mounted only for a ready HTML preview, and is hidden when unsupported.
+Capture state stays with that preview, so navigation removes the action and cancels
+in-flight work. The same icon cancels a pending capture; notices appear in a popover.
 The trusted workspace opens the browser's sharing chooser, crops the tab stream
 to the preview iframe, freezes one frame, and stops every track before opening the
 crop editor. Only the selected crop enters the draft. Sharing denial, wrong-surface

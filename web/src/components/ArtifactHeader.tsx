@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type Ref, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ArtifactDetail, ArtifactVersion } from "../../../shared/artifacts.ts";
 import { artifactApi } from "../artifact-api.ts";
 import { useOptimisticArtifact } from "../artifact-feedback-status.ts";
@@ -149,6 +149,7 @@ export function ArtifactHeader({
   onJumpRef,
   commenting,
   onToggleCommenting,
+  captureRef,
   feedbackVisible,
   onToggleFeedback,
 }: {
@@ -160,6 +161,7 @@ export function ArtifactHeader({
   onJumpRef?: (reference: MessageRef) => void;
   commenting?: boolean;
   onToggleCommenting?: () => void;
+  captureRef?: Ref<HTMLDivElement>;
   feedbackVisible?: boolean;
   onToggleFeedback?: () => void;
 }) {
@@ -262,6 +264,13 @@ export function ArtifactHeader({
             <path d="m10 10 4 11 2-5 5-2-11-4Z" />
           </StrokeIcon>
         </Button>
+      )}
+      {detail.kind === "html" && captureRef && (
+        <div
+          ref={captureRef}
+          data-preview-capture-slot
+          className="relative shrink-0 empty:hidden"
+        />
       )}
       <MoreActionsButton
         ref={detailsTrigger}

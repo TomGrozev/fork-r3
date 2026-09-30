@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArtifactApiError } from "../../../shared/artifact-client.ts";
 import {
   type ArtifactFile,
@@ -861,17 +862,22 @@ function PreviewSession(
             : "min-h-80"),
       )}
     >
-      {ready && !error && props.detail.kind === "html" && (
-        <PreviewScreenshot
-          key={`${context?.id}:${documentEpoch}:${props.path}:${screenshotRoute}`}
-          artifactId={id}
-          versionSeq={seq}
-          path={props.path}
-          route={screenshotRoute}
-          frame={iframe}
-          onTarget={props.onTarget}
-        />
-      )}
+      {ready &&
+        !error &&
+        props.detail.kind === "html" &&
+        props.captureContainer &&
+        createPortal(
+          <PreviewScreenshot
+            key={`${context?.id}:${documentEpoch}:${props.path}:${screenshotRoute}`}
+            artifactId={id}
+            versionSeq={seq}
+            path={props.path}
+            route={screenshotRoute}
+            frame={iframe}
+            onTarget={props.onTarget}
+          />,
+          props.captureContainer,
+        )}
       {error ? (
         <div role="alert" className="p-6 text-sm text-neutral-700 dark:text-neutral-300">
           <p>{error}</p>

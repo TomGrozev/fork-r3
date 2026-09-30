@@ -1,5 +1,5 @@
 // Isolated capability checks for the real screenshot toolbar; no daemon or publication.
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { PreviewScreenshot } from "../web/src/components/PreviewScreenshot.tsx";
 import "../web/src/main.css";
@@ -12,6 +12,9 @@ if (missing === "display")
 
 function Fixture() {
   const frame = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    document.documentElement.dataset.fixtureReady = "true";
+  }, []);
   return (
     <>
       <PreviewScreenshot

@@ -28,12 +28,7 @@ export const Unavailable: Story = {
   },
   play: async ({ canvasElement }) => {
     const screen = within(canvasElement);
-    const button = screen.getByRole("button", { name: "Capture area" });
-    await expect(button).toBeDisabled();
-    await expect(button).toHaveAccessibleDescription(/capture is unavailable in this browser/i);
-    await expect(
-      screen.getByText(/paste or attach a screenshot, or try desktop Chrome/i),
-    ).toBeVisible();
+    await expect(screen.queryByRole("button", { name: "Capture area" })).toBeNull();
   },
 };
 export const UnavailableDark: Story = { ...Unavailable, globals: { theme: "dark" } };

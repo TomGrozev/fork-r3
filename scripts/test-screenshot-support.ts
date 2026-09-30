@@ -28,29 +28,25 @@ const browser = await openTestBrowser();
 try {
   const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });
   const page = await browser.attach(targetId);
-  const unexplained: string[] = [];
   for (const missing of ["", "region", "frame", "display"]) {
     await page.command("Page.navigate", {
       url: `http://localhost:${app.port}/?missing=${missing}`,
     });
-    await eventually(() => page.evaluate("!!document.querySelector('button')"), "capture toolbar");
+    await eventually(
+      () => page.evaluate("document.documentElement.dataset.fixtureReady === 'true'"),
+      "capture control",
+    );
     const state = await page.evaluate(`({
-      disabled: document.querySelector('button').disabled,
-      text: document.body.textContent,
-      description: document.getElementById(document.querySelector('button').getAttribute('aria-describedby'))?.textContent,
+      present: !!document.querySelector('button[aria-label="Capture area"]'),
+      icon: !!document.querySelector('button[aria-label="Capture area"] svg'),
+      text: document.querySelector('button[aria-label="Capture area"]')?.textContent,
     })`);
-    assert.equal(state.disabled, !!missing, "Capture area matches the available browser APIs");
-    if (missing) {
-      if (!/capture is unavailable/i.test(state.text)) unexplained.push(missing);
-      assert.match(state.text, /paste or attach/i, "Unsupported browsers retain image feedback");
-      assert.match(
-        state.description,
-        /capture is unavailable/i,
-        "The control describes its disabled state",
-      );
+    assert.equal(state.present, !missing, "Unsupported browsers have no capture control");
+    if (!missing) {
+      assert.equal(state.icon, true);
+      assert.equal(state.text, "", "Capture is an icon button");
     }
   }
-  assert.deepEqual(unexplained, [], "Disabled capture explains unavailable browser support");
   console.log("Screenshot capability acceptance passed");
 } finally {
   await browser.close();

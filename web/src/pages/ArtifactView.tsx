@@ -90,6 +90,7 @@ export interface ArtifactRenderedPaneProps {
   onSelection?: (target: ArtifactDocumentTarget, rect: AnchorRect, quote: boolean) => void;
   onComposerKey?: (action: "focus" | "escape") => void;
   onToggleCommenting?: () => void;
+  captureContainer?: HTMLElement | null;
   noteHasText?: boolean;
   composerVisible?: boolean;
   onDocument: (path: string, route?: string) => void;
@@ -193,6 +194,7 @@ function Workspace({
   const collapsed = feedbackMode === "hidden";
   const [sheet, setSheet] = useState<MobileSheetState>("closed");
   const [commenting, setCommenting] = useState(false);
+  const [captureContainer, setCaptureContainer] = useState<HTMLDivElement | null>(null);
   const [feedbackTab, setFeedbackTab] = useState<ArtifactFeedbackTab>("active");
   const [notice, setNotice] = useState("");
   const [floating, setFloating] = useState<AnchorRect | null>(null);
@@ -778,6 +780,7 @@ function Workspace({
         onJumpRef={(ref) => jumpRef(ref, context)}
         commenting={commenting}
         onToggleCommenting={toggleCommenting}
+        captureRef={setCaptureContainer}
       />
       <main ref={splitRef} className="relative flex min-h-0 flex-1">
         {!mobile && detail.kind !== "html" && (
@@ -836,6 +839,7 @@ function Workspace({
                   version,
                   path,
                   commenting,
+                  captureContainer,
                   jump: renderedJump,
                   targets: renderedTargets,
                   onTarget: anchor,

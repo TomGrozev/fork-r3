@@ -224,6 +224,10 @@ verification; it does not weaken the preview policy to make screenshots work.
 
 `R3_TEST_BROWSER=<chromium> bun scripts/test-screenshot-support.ts` renders the real
 capture toolbar with each required browser API independently unavailable. It
-checks that capture stays disabled with a visible explanation and paste/upload
-guidance, and remains enabled when all required APIs are present. The
-`PreviewScreenshot` stories cover the unavailable state in both themes.
+checks that capture is hidden when unsupported and appears as an accessible icon
+when all required APIs are present. The `ArtifactHeader` and `PreviewScreenshot`
+stories cover the navbar placement and unsupported state in both themes.
+The feedback image browser check also covers cursor insertion, spaced image
+placeholders, mixed clipboard text, typing during preparation, file selection,
+renumbering after removal, and reply composers without thread actions. Pure
+placeholder and prompt tests keep labels aligned across notes, edits, and replies.

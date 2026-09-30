@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { artifactNudgeText, buildArtifactPrompt } from "./artifact-prompt.ts";
 import type { ArtifactDetail, ArtifactFeedback } from "./artifacts.ts";
+import type { ArtifactAttachment } from "./attachments.ts";
 
 const time = "2026-09-01T00:00:00.000Z";
 const human = { role: "human" as const, sessionId: null };
@@ -55,6 +56,40 @@ function note(): ArtifactFeedback {
 }
 
 describe("artifact prompt formatting", () => {
+  test("image placeholders identify attachments within each note or reply", () => {
+    const image = (id: string): ArtifactAttachment => ({
+      id,
+      artifactId: detail.id,
+      hash: "0".repeat(64),
+      mediaType: "image/png",
+      byteLength: 100,
+      width: 10,
+      height: 10,
+    });
+    const feedback = note();
+    feedback.body = "Compare [image1] and [image2]";
+    feedback.attachments = [image("first"), image("second")];
+    feedback.replies = [
+      {
+        id: "reply_images",
+        artifactId: detail.id,
+        feedbackId: feedback.id,
+        author: human,
+        body: "Try [image1]",
+        attachments: [image("reply_image")],
+        context: { versionSeq: 2, representation: "rendered" },
+        target: null,
+        createdAt: time,
+        sentAt: null,
+        legacy: null,
+      },
+    ];
+    const prompt = buildArtifactPrompt(detail, [feedback]);
+    expect(prompt).toContain("[image1] Image first");
+    expect(prompt).toContain("[image2] Image second");
+    expect(prompt).toContain("[image1] Image reply_image");
+    expect(prompt).not.toContain("[image3]");
+  });
   test("preserves native version, representation and rendered evidence without changing delivery state", () => {
     const feedback = note();
     const prompt = buildArtifactPrompt(detail, [feedback], true);

@@ -1,10 +1,11 @@
-import { type RefObject, useEffect, useId, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import type { ArtifactDocumentTarget } from "../../../shared/artifacts.ts";
 import { ATTACHMENT_LIMITS } from "../../../shared/attachments.ts";
 import { artifactDrafts } from "../artifact-drafts.ts";
 import { prepareDraftImage } from "../attachment-drafts.ts";
+import { imageMessageBody } from "../image-placeholders.ts";
 import { canCapturePreview, capturePreview } from "../screenshot.ts";
-import { Button } from "../ui.tsx";
+import { Button, StrokeIcon } from "../ui.tsx";
 import { ImageEditor } from "./ImageEditor.tsx";
 
 export function PreviewScreenshot({
@@ -31,9 +32,6 @@ export function PreviewScreenshot({
   const operation = useRef<AbortController | null>(null);
   const generation = useRef(0);
   const supported = canCapturePreview();
-  const hintId = useId();
-  const unavailableHint =
-    "Area capture is unavailable in this browser. Paste or attach a screenshot, or try desktop Chrome.";
   useEffect(() => {
     const cancel = () => {
       generation.current++;
@@ -94,36 +92,52 @@ export function PreviewScreenshot({
       }
     }
   };
+  if (!supported) return null;
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 px-3 py-1.5 text-xs text-neutral-500 dark:border-neutral-800">
+      <div className="relative">
         <Button
-          disabled={!supported || pending}
-          title={supported ? "Share this tab, then select an area" : unavailableHint}
-          aria-describedby={hintId}
-          onClick={() => void begin()}
+          variant={pending ? "primary-outline" : "nav"}
+          className="h-[calc(1.75rem-2px)] w-7 shrink-0 justify-center p-0! max-md:size-9"
+          aria-label={pending ? "Cancel capture" : "Capture area"}
+          title={pending ? "Cancel capture" : "Capture area — share this tab, then crop and draw"}
+          onClick={() => {
+            if (pending) {
+              operation.current?.abort();
+              delete document.documentElement.dataset.r3Screenshot;
+              setPending(false);
+            } else void begin();
+          }}
         >
-          Capture area
+          <StrokeIcon className="size-4">
+            {pending ? (
+              <path d="m6 6 12 12M18 6 6 18" />
+            ) : (
+              <>
+                <path d="M8 5 9.5 3h5L16 5h4v14H4V5h4Z" />
+                <circle cx="12" cy="12" r="3.5" />
+              </>
+            )}
+          </StrokeIcon>
         </Button>
-        {pending ? (
-          <>
-            <span id={hintId}>Choose this r3 tab in the browser sharing prompt.</span>
-            <Button
-              onClick={() => {
-                operation.current?.abort();
-                delete document.documentElement.dataset.r3Screenshot;
-                setPending(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </>
-        ) : !supported ? (
-          <span id={hintId}>{unavailableHint}</span>
-        ) : (
-          <span id={hintId}>Attach a screenshot to feedback</span>
+        {(pending || notice) && (
+          <div className="absolute right-0 top-full z-50 mt-2 flex w-72 max-w-[calc(100vw-1rem)] items-start gap-2 rounded-lg border border-neutral-300 bg-white p-3 text-xs text-neutral-500 r3-popover dark:border-neutral-700 dark:bg-neutral-950">
+            <p role="status">
+              {pending
+                ? "Choose this r3 tab in the browser sharing prompt. Click Cancel capture to stop."
+                : notice}
+            </p>
+            {!pending && (
+              <Button
+                variant="ghost"
+                aria-label="Dismiss capture notice"
+                onClick={() => setNotice("")}
+              >
+                ×
+              </Button>
+            )}
+          </div>
         )}
-        {notice && <span role="status">{notice}</span>}
       </div>
       {snapshot && (
         <ImageEditor
@@ -153,8 +167,11 @@ export function PreviewScreenshot({
               throw new Error("The draft already contains four images");
             onTarget({ kind: "rendered", versionSeq, path, locator: null });
             const draft = artifactDrafts.get(artifactId);
+            const before = draft?.attachments ?? [];
+            const attachments = [...before, attachment];
             artifactDrafts.update(artifactId, {
-              attachments: [...(draft?.attachments ?? []), attachment],
+              attachments,
+              body: imageMessageBody(draft?.body ?? "", before, attachments),
             });
             artifactDrafts.flush();
             setSnapshot(null);

@@ -1,11 +1,16 @@
-import { type ComponentProps, useRef } from "react";
+import { type ComponentProps, type RefObject, useRef } from "react";
 import { useAutoGrow } from "../autogrow.ts";
 
 export function MessageInput({
   value,
+  inputRef,
   ...props
-}: Omit<ComponentProps<"textarea">, "ref" | "value" | "className"> & { value: string }) {
-  const textarea = useRef<HTMLTextAreaElement>(null);
+}: Omit<ComponentProps<"textarea">, "ref" | "value" | "className"> & {
+  value: string;
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
+}) {
+  const local = useRef<HTMLTextAreaElement>(null);
+  const textarea = inputRef ?? local;
   const ref = useAutoGrow(textarea, value, 3, 12);
   return (
     <textarea

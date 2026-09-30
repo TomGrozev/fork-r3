@@ -1,8 +1,13 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { ATTACHMENT_LIMITS } from "../../../../shared/attachments.ts";
 import { ImageEditor } from "../../components/ImageEditor.tsx";
 import type { ImageCrop } from "../../image-edit.ts";
+import {
+  type ImageInsertion,
+  imageMessageBody,
+  insertImagePlaceholders,
+} from "../../image-placeholders.ts";
 import { useTheme } from "../theme.ts";
 import { sampleScreenshot } from "./sample.ts";
 import "./showcase.css";
@@ -85,6 +90,7 @@ export function ImageFeedbackShowcase() {
   const urls = useRef(new Set<string>());
   const serial = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
+  const textarea = useRef<HTMLTextAreaElement>(null);
   const current = useRef(draft);
   current.current = draft;
   const hasDraft = !!draft.text.trim() || draft.images.length > 0;
@@ -149,8 +155,30 @@ export function ImageFeedbackShowcase() {
       .getElementById("feedback-playground")
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
-  async function attach(files: File[]) {
+  const selection = (text = ""): ImageInsertion => ({
+    start: textarea.current?.selectionStart ?? current.current.text.length,
+    end: textarea.current?.selectionEnd ?? current.current.text.length,
+    text,
+  });
+  function appendImages(added: DemoImage[], insertion: ImageInsertion) {
+    const value = current.current;
+    const result = insertImagePlaceholders(
+      value.text,
+      value.images.length + 1,
+      added.length,
+      insertion,
+    );
+    flushSync(() => {
+      setDraft({ ...value, text: result.body, images: [...value.images, ...added] });
+      setBusy(false);
+    });
+    textarea.current?.focus({ preventScroll: true });
+    textarea.current?.setSelectionRange(result.caret, result.caret);
+  }
+  async function attach(files: File[], text = "") {
     if (loading.current || recovery) return;
+    if (!files.length) return;
+    const insertion = selection(text);
     loading.current = true;
     setBusy(true);
     setError("");
@@ -164,7 +192,7 @@ export function ImageFeedbackShowcase() {
         if (file.size > ATTACHMENT_LIMITS.bytes) throw new Error("Images must be at most 5 MiB.");
         added.push(await image(file, file.name || "pasted-image.png"));
       }
-      setDraft((value) => ({ ...value, images: [...value.images, ...added] }));
+      appendImages(added, insertion);
       setNotice("Image attached. Open Edit to crop it or add a drawing.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to open this image.");
@@ -175,10 +203,7 @@ export function ImageFeedbackShowcase() {
   }
   function addSample() {
     if (!sample || full || recovery || busy) return;
-    setDraft((value) => ({
-      ...value,
-      images: [...value.images, { ...sample, id: ++serial.current }],
-    }));
+    appendImages([{ ...sample, id: ++serial.current }], selection());
     setError("");
     setNotice("Sample attached. You can post an image without writing any text.");
   }
@@ -194,13 +219,13 @@ export function ImageFeedbackShowcase() {
           y: (editing.previousCrop?.y ?? 0) + crop.y,
         },
       };
-    setDraft((value) => ({
-      ...value,
-      images:
+    setDraft((value) => {
+      const images =
         editing.replace === undefined
           ? [...value.images, result]
-          : value.images.map((item) => (item.id === editing.replace ? result : item)),
-    }));
+          : value.images.map((item) => (item.id === editing.replace ? result : item));
+      return { ...value, images, text: imageMessageBody(value.text, value.images, images) };
+    });
     setEditing(null);
     setError("");
     setNotice("Image ready. Cropping and drawings are baked into the attached PNG.");
@@ -224,7 +249,7 @@ export function ImageFeedbackShowcase() {
     const saved = hasDraft
       ? draft
       : {
-          text: "Give the September label a little more space.",
+          text: "Give the September label a little more space. [image1] ",
           images: [{ ...sample, id: ++serial.current }],
           version,
         };
@@ -377,8 +402,9 @@ export function ImageFeedbackShowcase() {
                 </p>
               </div>
               <p className="showcase-footnote">
-                To capture this page for real, use <strong>Capture area</strong> in the surrounding
-                r3 feedback composer. Your browser must support current-tab region capture.
+                To capture this page for real, use the <strong>Capture area</strong> camera icon
+                beside Comment mode in the r3 navbar. The icon is hidden when your browser does not
+                support capture; paste or attach a screenshot instead.
               </p>
             </section>
 
@@ -403,7 +429,7 @@ export function ImageFeedbackShowcase() {
                       </header>
                       {note.text && <p>{note.text}</p>}
                       <div className="showcase-posted-images">
-                        {note.images.map((item) => (
+                        {note.images.map((item, imageIndex) => (
                           <button
                             type="button"
                             key={item.id}
@@ -411,6 +437,7 @@ export function ImageFeedbackShowcase() {
                             aria-label={`Open ${item.name}`}
                           >
                             <img src={item.url} alt={item.name} />
+                            <span>{`[image${imageIndex + 1}]`}</span>
                           </button>
                         ))}
                       </div>
@@ -469,6 +496,8 @@ export function ImageFeedbackShowcase() {
                 ) : (
                   <>
                     <textarea
+                      ref={textarea}
+                      disabled={busy}
                       id="demo-feedback-text"
                       aria-label="Demo feedback text"
                       value={draft.text}
@@ -483,13 +512,14 @@ export function ImageFeedbackShowcase() {
                           .filter((file): file is File => !!file);
                         if (files.length) {
                           event.preventDefault();
-                          void attach(files);
+                          void attach(files, event.clipboardData.getData("text/plain"));
                         }
                       }}
                     />
                     <div className="showcase-draft-images">
-                      {draft.images.map((item) => (
+                      {draft.images.map((item, index) => (
                         <article key={item.id}>
+                          <small>{`[image${index + 1}]`}</small>
                           <button
                             type="button"
                             className="showcase-thumbnail"
@@ -522,10 +552,16 @@ export function ImageFeedbackShowcase() {
                               disabled={busy}
                               aria-label={`Remove ${item.name}`}
                               onClick={() => {
-                                setDraft((value) => ({
-                                  ...value,
-                                  images: value.images.filter((image) => image.id !== item.id),
-                                }));
+                                setDraft((value) => {
+                                  const images = value.images.filter(
+                                    (image) => image.id !== item.id,
+                                  );
+                                  return {
+                                    ...value,
+                                    images,
+                                    text: imageMessageBody(value.text, value.images, images),
+                                  };
+                                });
                                 setError("");
                               }}
                             >
@@ -542,6 +578,7 @@ export function ImageFeedbackShowcase() {
                       <button
                         type="button"
                         id="attach-file"
+                        title="Attach an image, or paste an image directly into the text input"
                         disabled={full || busy}
                         onClick={() => fileInput.current?.click()}
                       >
@@ -710,7 +747,7 @@ export function ImageFeedbackShowcase() {
             <h2>Pixels travel with the note.</h2>
             <p className="showcase-muted">
               Image references appear in agent feedback. Fetch into a directory to download and
-              verify the actual files before acknowledging the feedback.
+              check the actual files before acknowledging the feedback.
             </p>
             <div className="showcase-terminal">
               <div>
@@ -732,6 +769,12 @@ export function ImageFeedbackShowcase() {
                 </li>
               ))}
             </ol>
+            <p id="image-verification" className="showcase-footnote mb-4">
+              <strong>What does verified mean?</strong> Each downloaded image must match the byte
+              count and SHA-256 hash recorded with the feedback. This confirms file integrity; the
+              agent still needs to open the image to understand it. A mismatch leaves feedback
+              pending.
+            </p>
             <div className="showcase-actions">
               <button
                 type="button"
