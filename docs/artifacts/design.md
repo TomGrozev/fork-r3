@@ -44,6 +44,12 @@ Publication order does not imply patch application: version 2 need not apply on
 top of version 1. Diff rendering produces HTML for display while retaining native
 old/new target semantics.
 
+Patch text must be valid UTF-8; capture rejects malformed bytes rather than
+replacing them. Files artifacts can retain non-UTF-8 content as original bytes.
+Git capture uses stable path prefixes and the short submodule format, including
+changed submodule pointers regardless of display or ignore preferences. It does
+not recursively capture submodule contents. Git binary patches remain supported.
+
 All kinds share version identity, conversations, claims, owner handoff, and
 active/archived lifecycle. Files and HTML own their members directly; there is no
 additional directory-container entity for a caller to create or manage.

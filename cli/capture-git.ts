@@ -66,6 +66,16 @@ async function git(root: string, args: string[]): Promise<Buffer> {
   return result.stdout;
 }
 
+function patchText(bytes: Buffer): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new CaptureError(
+      "Git patch must contain valid UTF-8; publish non-UTF-8 files as a files artifact",
+    );
+  }
+}
+
 export function safePublisherRef(ref: string): string {
   if (!ref || ref.startsWith("-") || /[\0\r\n]/.test(ref))
     throw new CaptureError("Invalid git reference");
@@ -197,6 +207,8 @@ export async function captureGitDiff(root: string, base: string, head: string): 
     "--no-ext-diff",
     "--no-textconv",
     "--binary",
+    "--submodule=short",
+    "--ignore-submodules=none",
     "--find-renames",
     "--unified=2000",
   ];
@@ -206,7 +218,7 @@ export async function captureGitDiff(root: string, base: string, head: string): 
   else args.push(baseRevision!, headTree!);
   args.push("--");
   async function capture(): Promise<string> {
-    let patch = (await git(root, args)).toString();
+    let patch = patchText(await git(root, args));
     if (head === "WORKING") {
       const untracked = (await git(root, ["ls-files", "--others", "--exclude-standard", "-z"]))
         .toString()
@@ -230,7 +242,7 @@ export async function captureGitDiff(root: string, base: string, head: string): 
         ]);
         if (file.code > 1)
           throw new CaptureError(`Untracked diff capture failed: ${file.stderr.trim()}`);
-        patch += file.stdout.toString();
+        patch += patchText(file.stdout);
         if (Buffer.byteLength(patch) > PUBLICATION_LIMITS.totalBytes * 2)
           throw new CaptureError("Git patch capture exceeds the output size limit");
       }

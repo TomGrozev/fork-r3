@@ -17,6 +17,7 @@ export const ARTIFACT_HELP = `r3 — published artifacts and human/agent convers
 Capture: --dir <prepared-directory> [--file <relative-path>]...
          --ref <git-ref> --file <relative-path>...
          --stdin-diff | --working | --staged | --commit <sha> | --diff <base>..<head>
+Diff text requires UTF-8. Git capture always includes changed submodule pointers.
 Publication summaries belong to versions. Artifacts have no overview field.
 Publication: --version-label L --summary S --key K --no-listen
              --label remains a publication-only alias; do not supply both spellings.
@@ -249,7 +250,9 @@ r3 publish <id> --staged
 git diff main feature | r3 publish <id> --stdin-diff
 \`\`\`
 
-Git capture runs on the publisher. The daemon stores the captured patch and context. A later publication should express the complete intended review against its chosen base. The stdin path carries the supplied patch; context outside that input is unavailable.
+Git capture runs on the publisher. Changed submodule pointers are always included in the patch, regardless of Git's submodule display or ignore settings. Submodule contents are not captured recursively. The daemon stores the captured patch and context. A later publication should express the complete intended review against its chosen base. The stdin path carries the supplied patch; context outside that input is unavailable.
+
+Patch text must be valid UTF-8. Invalid text bytes are rejected instead of replaced; publish non-UTF-8 files as a files artifact to preserve their original bytes. Git binary patches remain supported.
 
 ## Diff targets
 

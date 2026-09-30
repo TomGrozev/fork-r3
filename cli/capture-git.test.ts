@@ -26,6 +26,54 @@ afterEach(async () => {
 
 describe("publisher git capture", () => {
   test.each([
+    "tracked",
+    "untracked",
+  ])("rejects invalid UTF-8 in %s text diffs without replacing bytes", async (membership) => {
+    let base = originalTree;
+    if (membership === "tracked") {
+      await writeFile(join(root, "legacy.txt"), Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]));
+      await git("add", "--", "legacy.txt");
+      base = await git("write-tree");
+    }
+    await writeFile(join(root, "legacy.txt"), Buffer.from([0x63, 0x61, 0x66, 0xe8, 0x0a]));
+    await expect(captureGitDiff(root, base, "WORKING")).rejects.toThrow(
+      "Git patch must contain valid UTF-8",
+    );
+  });
+
+  test("preserves valid Unicode patch text including an authored replacement character", async () => {
+    await writeFile(join(root, "readme.md"), "# caf\uFFFD → café\n");
+    const patch = await captureGitDiff(root, originalTree, "WORKING");
+    expect(patch).toContain("+# caf\uFFFD → café\n");
+    expect(validateStoredPatch(patch)[0].additions).toBe(1);
+  });
+
+  test.each([
+    ["diff.submodule", "log"],
+    ["diff.submodule", "diff"],
+    ["diff.ignoreSubmodules", "all"],
+  ])("retains changed submodule pointers with %s=%s", async (setting, value) => {
+    // Gitlinks can name commits absent from the publisher's object store.
+    const oldPointer = "1".repeat(originalTree.length);
+    const newPointer = "2".repeat(originalTree.length);
+    await git("update-index", "--add", "--cacheinfo", `160000,${oldPointer},module`);
+    const base = await git("write-tree");
+    await git("update-index", "--cacheinfo", `160000,${newPointer},module`);
+    await writeFile(join(root, "readme.md"), "# Revised\n");
+    await git("add", "--", "readme.md");
+    const head = await git("write-tree");
+    await git("config", setting, value);
+
+    const files = validateStoredPatch(await captureGitDiff(root, base, head));
+    expect(files.map((file) => file.path)).toEqual(["module", "readme.md"]);
+    expect(
+      files[0].lines
+        .filter((line) => line.type === "del" || line.type === "add")
+        .map((line) => line.text),
+    ).toEqual([`Subproject commit ${oldPointer}`, `Subproject commit ${newPointer}`]);
+  });
+
+  test.each([
     "diff.mnemonicPrefix",
     "diff.noprefix",
   ])("capture preserves paths and binary/mode changes with %s enabled", async (setting) => {
