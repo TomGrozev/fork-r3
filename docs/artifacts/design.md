@@ -517,6 +517,14 @@ History reads (`--all`) and human reads skip registration. A future local proxy 
 a remote artifact service while keeping harness delivery local; browser links would
 open the remote site. This change does not implement that proxy.
 
+The remote relay receives notifications in order, with one delivery active at a
+time. Each 15-second acknowledgment deadline starts at dispatch, not while waiting
+behind an earlier notification. At most six notifications, including the active
+one, may be pending; their delivery windows fit within the server's 120-second
+request timeout. Capacity errors retain the explicit-listener failure behavior.
+Failure or disconnection rejects queued work without dispatching it. A nonblank
+archive notification waits in order on its captured connection, then closes it.
+
 Delivery records the owner's handoff, not a read receipt from every agent. Agent
 messages start delivered; human feedback/replies wait for handoff. Reading or
 subscribing is not acknowledgment. The CLI reads `feedback/pending`, completes stdout output, then calls the explicit

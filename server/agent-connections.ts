@@ -14,7 +14,13 @@ import {
   requireString,
 } from "./artifact-validation.ts";
 
+// One active delivery plus five waiting: six 15-second windows leave margin
+// within the application server's 120-second HTTP idle timeout.
+const MAX_PENDING_NOTIFICATIONS = 6;
+
 interface Pending {
+  dispatched: boolean;
+  dispatch: () => void;
   settle: (error?: Error, state?: ArtifactDeliveryState) => void;
 }
 interface Connection {
@@ -42,6 +48,7 @@ export class AgentConnections {
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let closed = false;
     const pending = new Map<string, Pending>();
+    let active: Pending | undefined;
     const send = (event: ArtifactAgentStreamEvent) => {
       if (closed) throw new Error("Agent connection is closed");
       controller.enqueue(
@@ -73,28 +80,52 @@ export class AgentConnections {
       },
       cancel: () => close(),
     });
+    const dispatchNext = () => {
+      if (closed || active) return;
+      active = pending.values().next().value;
+      if (!active) return;
+      active.dispatched = true;
+      active.dispatch();
+    };
     const push = (nudge: ArtifactNudge): Promise<ArtifactDeliveryState> => {
       if (closed) return Promise.reject(new Error("Agent connection is closed"));
-      if (pending.size >= 32)
+      if (pending.size >= MAX_PENDING_NOTIFICATIONS)
         return Promise.reject(new Error("Agent has too many unacknowledged notifications"));
       return new Promise((resolve, reject) => {
-        let timer: ReturnType<typeof setTimeout>;
+        let timer: ReturnType<typeof setTimeout> | undefined;
         const settle = (error?: Error, state: ArtifactDeliveryState = "sent") => {
           if (!pending.delete(nudge.id)) return;
           clearTimeout(timer);
-          if (error) reject(error);
-          else resolve(state);
+          if (active === item) active = undefined;
+          if (error) {
+            reject(error);
+            // Archive detaches the stream before its final notification. Close
+            // here too, so a failed earlier delivery cannot strand that queue.
+            close();
+          } else {
+            resolve(state);
+            dispatchNext();
+          }
         };
-        pending.set(nudge.id, { settle });
-        timer = setTimeout(
-          () => settle(new Error("Agent delivery acknowledgment timed out")),
-          this.acknowledgmentTimeoutMs,
-        );
-        try {
-          send({ type: "nudge", nudge });
-        } catch (error) {
-          settle(error instanceof Error ? error : new Error("Agent stream write failed"));
-        }
+        const item: Pending = {
+          dispatched: false,
+          settle,
+          dispatch: () => {
+            // The relay delivers serially. Queueing behind another nudge must
+            // not consume this notification's acknowledgment deadline.
+            timer = setTimeout(
+              () => settle(new Error("Agent delivery acknowledgment timed out")),
+              this.acknowledgmentTimeoutMs,
+            );
+            try {
+              send({ type: "nudge", nudge });
+            } catch (error) {
+              settle(error instanceof Error ? error : new Error("Agent stream write failed"));
+            }
+          },
+        };
+        pending.set(nudge.id, item);
+        dispatchNext();
       });
     };
     try {
@@ -131,7 +162,8 @@ export class AgentConnections {
     if (actor.role !== "agent" || actor.sessionId !== connection.registration.actor.sessionId)
       throw new ArtifactError("Acknowledgment must name the connected agent session", 409);
     const item = connection.pending.get(nudgeId);
-    if (!item) throw new ArtifactError("Notification is no longer awaiting acknowledgment", 404);
+    if (!item?.dispatched)
+      throw new ArtifactError("Notification is no longer awaiting acknowledgment", 404);
     item.settle(input.ok ? undefined : new Error(error || "Local harness delivery failed"), state);
   }
 
