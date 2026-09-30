@@ -362,6 +362,13 @@
   padding: 4px 6px;
   font-size: 10px;
 }
+.image-showcase .showcase-icon-button {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+}
 .showcase-draft-images small {
   display: block;
   font-size: 9px;
@@ -801,5 +808,10 @@
   }
   .showcase-draft-images article > div button {
     min-height: 36px;
+  }
+  .image-showcase .showcase-icon-button {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
   }
 }

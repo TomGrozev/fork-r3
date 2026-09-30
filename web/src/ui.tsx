@@ -365,6 +365,23 @@ export function FoldChevrons({
   );
 }
 
+export function PencilIcon({ className = "size-4" }: { className?: string }) {
+  return (
+    <StrokeIcon className={cn("shrink-0", className)}>
+      <path d="m16 3 5 5-12 12-6 1 1-6L16 3Z" />
+      <path d="m14 5 5 5" />
+    </StrokeIcon>
+  );
+}
+
+export function PaperclipIcon({ className = "size-4" }: { className?: string }) {
+  return (
+    <StrokeIcon className={cn("shrink-0", className)}>
+      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </StrokeIcon>
+  );
+}
+
 // Discard/delete affordance — a trash can (Lucide "trash-2"). Used icon-only for a
 // destructive action that would read as too loud spelled out as a bordered button
 // (e.g. "Discard" beside a filled Save), so it stays a quiet neutral glyph that

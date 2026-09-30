@@ -167,7 +167,7 @@ try {
   assert.equal(await page.evaluate(`${input}.value`), " [image1] [image2] [image3] ");
   const removeSecond = () =>
     page.evaluate(
-      "Array.from(document.querySelectorAll('[data-artifact-composer] button')).filter(button=>button.textContent==='Remove')[1].click()",
+      "document.querySelectorAll('[data-artifact-composer] button[aria-label=\"Remove image\"]')[1].click()",
     );
   await removeSecond();
   assert.equal(await page.evaluate(`${input}.value`), " [image1]  [image2] ");
@@ -379,7 +379,12 @@ try {
     "document.querySelector('[data-artifact-feedback] [data-feedback-action=reply]').click()",
   );
   const replyInput = "document.querySelector('[data-reply-to] textarea')";
-  await eventually(() => page.evaluate(`!!(${replyInput})`), "reply composer");
+  // Opening a reply moves the caret on the next animation frame. Wait for that
+  // focus before simulating the user's text and cursor placement.
+  await eventually(
+    () => page.evaluate(`!!(${replyInput}) && document.activeElement === ${replyInput}`),
+    "focused reply composer",
+  );
   assert.equal(
     await page.evaluate(
       "!!document.querySelector('[data-reply-to] [data-feedback-action=resolve], [data-reply-to] [aria-label=\"More actions\"]')",

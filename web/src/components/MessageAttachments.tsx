@@ -15,7 +15,7 @@ import {
 } from "../attachment-drafts.ts";
 import { type ImageInsertion, insertImagePlaceholders } from "../image-placeholders.ts";
 import { suspendKeys } from "../keys.ts";
-import { Button } from "../ui.tsx";
+import { Button, PaperclipIcon, PencilIcon, TrashIcon } from "../ui.tsx";
 import { ImageEditor } from "./ImageEditor.tsx";
 
 export type EditableImage = (DraftAttachment | ArtifactAttachment) & {
@@ -166,6 +166,9 @@ export function MessageAttachments({
               <div className="mt-1 flex gap-2">
                 <Button
                   type="button"
+                  className="size-7 shrink-0 justify-center p-0! max-md:size-9"
+                  aria-label="Edit image"
+                  title="Edit image"
                   disabled={disabled || image.pending}
                   onClick={() => {
                     void imageBlob(image)
@@ -176,14 +179,17 @@ export function MessageAttachments({
                       .catch((error) => setError(error.message));
                   }}
                 >
-                  Edit image
+                  <PencilIcon />
                 </Button>
                 <Button
                   type="button"
+                  className="size-7 shrink-0 justify-center p-0! max-md:size-9"
+                  aria-label="Remove image"
+                  title="Remove image"
                   disabled={disabled}
                   onClick={() => onChange((items) => items.filter((item) => item.id !== image.id))}
                 >
-                  Remove
+                  <TrashIcon />
                 </Button>
               </div>
             )}
@@ -369,11 +375,13 @@ export function useAttachmentInput(
         />
         <Button
           type="button"
+          className="size-7 shrink-0 justify-center p-0! max-md:size-9"
+          aria-label="Attach image"
           disabled={disabled || images.length >= ATTACHMENT_LIMITS.count}
           title="Attach an image, or paste an image directly into the text input"
           onClick={() => input.current?.click()}
         >
-          Attach image
+          <PaperclipIcon />
         </Button>
       </>
     ),

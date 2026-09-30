@@ -38,6 +38,17 @@ export const ImageOnly: Story = {
   ],
 };
 export const ImageOnlyDark: Story = { ...ImageOnly, globals: { theme: "dark" } };
+export const ImageOnlyNarrow: Story = {
+  ...ImageOnly,
+  decorators: [
+    (Story) => (
+      <div className="w-72">
+        <Story />
+      </div>
+    ),
+  ],
+};
+export const ImageOnlyNarrowDark: Story = { ...ImageOnlyNarrow, globals: { theme: "dark" } };
 export const PasteAtCursor: Story = {
   args: { artifactId: "artifact_paste_composer" },
   beforeEach: () => {

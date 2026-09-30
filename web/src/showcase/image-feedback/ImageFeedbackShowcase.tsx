@@ -8,6 +8,7 @@ import {
   imageMessageBody,
   insertImagePlaceholders,
 } from "../../image-placeholders.ts";
+import { PaperclipIcon, PencilIcon, TrashIcon } from "../../ui.tsx";
 import { useTheme } from "../theme.ts";
 import { sampleScreenshot } from "./sample.ts";
 import "./showcase.css";
@@ -534,6 +535,9 @@ export function ImageFeedbackShowcase() {
                             </span>
                             <button
                               type="button"
+                              className="showcase-icon-button"
+                              aria-label={`Edit ${item.name}`}
+                              title="Edit image"
                               disabled={busy}
                               onClick={() =>
                                 setEditing({
@@ -545,10 +549,12 @@ export function ImageFeedbackShowcase() {
                                 })
                               }
                             >
-                              Edit
+                              <PencilIcon />
                             </button>
                             <button
                               type="button"
+                              className="showcase-icon-button"
+                              title="Remove image"
                               disabled={busy}
                               aria-label={`Remove ${item.name}`}
                               onClick={() => {
@@ -565,7 +571,7 @@ export function ImageFeedbackShowcase() {
                                 setError("");
                               }}
                             >
-                              ✕
+                              <TrashIcon />
                             </button>
                           </div>
                           {item.capture && (
@@ -578,11 +584,13 @@ export function ImageFeedbackShowcase() {
                       <button
                         type="button"
                         id="attach-file"
+                        className="showcase-icon-button"
+                        aria-label="Attach image"
                         title="Attach an image, or paste an image directly into the text input"
                         disabled={full || busy}
                         onClick={() => fileInput.current?.click()}
                       >
-                        + Attach image
+                        <PaperclipIcon />
                       </button>
                       <span className="showcase-muted">{draft.images.length}/4</span>
                       <button
