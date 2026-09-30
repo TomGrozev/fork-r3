@@ -190,6 +190,11 @@ function VersionPreview(props: ArtifactRenderedPaneProps) {
             : undefined
         }
         paths={files.data?.map((file) => file.path) ?? []}
+        documentPaths={
+          files.data
+            ?.filter((file) => file.renderedHash || file.mediaType.split(";")[0] === "text/html")
+            .map((file) => file.path) ?? []
+        }
         markdownPaths={
           files.data?.filter((file) => file.renderedHash).map((file) => file.path) ?? []
         }
@@ -207,6 +212,7 @@ function VersionPreview(props: ArtifactRenderedPaneProps) {
 function PreviewSession(
   props: ArtifactRenderedPaneProps & {
     paths: string[];
+    documentPaths: string[];
     markdownPaths: string[];
     markdownFiles: ArtifactFile[];
     network: ArtifactPreviewNetwork;
@@ -228,6 +234,7 @@ function PreviewSession(
   const [initialPath] = useState(props.path);
   const [context, setContext] = useState<ArtifactPreviewContext | null>(null);
   const [src, setSrc] = useState("");
+  const [documentEpoch, resetDocument] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [ready, setReady] = useState(false);
@@ -382,6 +389,11 @@ function PreviewSession(
         noteHasText: props.noteHasText,
         composerVisible: props.composerVisible,
         fitContent,
+        filePaths: props.detail.kind === "files" ? props.documentPaths : undefined,
+        navigation:
+          props.path === currentPath.current && (!fitContent || fittedPath.current === props.path)
+            ? props.navigation
+            : null,
         commenting: props.commenting && context.presentation === "document",
         targets: props.targets.flatMap(({ feedbackId, target }) =>
           target.kind === "rendered" &&
@@ -518,9 +530,42 @@ function PreviewSession(
           current.current.onDevicesReset();
           port.close();
           connection.current = null;
+        } else if (message.type === "r3-preview-navigate") {
+          if (
+            current.current.detail.kind === "files" &&
+            typeof message.targetPath === "string" &&
+            current.current.documentPaths.includes(message.targetPath) &&
+            typeof message.route === "string" &&
+            message.route.length <= 4096 &&
+            /^[?#]/.test(message.route)
+          )
+            current.current.onDocument(message.targetPath, message.route);
         } else if (message.type === "r3-preview-document") {
+          const route =
+            typeof message.route === "string" &&
+            message.route.length <= 4096 &&
+            /^[?#]/.test(message.route)
+              ? message.route
+              : "#";
+          if (current.current.detail.kind === "files" && path !== current.current.path) {
+            // Script/native replacement can bypass the ordinary link handoff.
+            // Recreate the source frame even when React's src value is unchanged.
+            current.current.onDocument(path, route);
+            capture.close();
+            current.current.onDevicesReset();
+            port.close();
+            connection.current = null;
+            currentPath.current = current.current.path;
+            setReady(false);
+            setDocumentHeight(null);
+            setSrc(
+              `${context.resourceRoot}${current.current.path.split("/").map(encodeURIComponent).join("/")}`,
+            );
+            resetDocument((epoch) => epoch + 1);
+            return;
+          }
           currentPath.current = message.path;
-          current.current.onDocument(message.path);
+          current.current.onDocument(message.path, route);
           setReady(true);
           setNotice("");
           display();
@@ -729,6 +774,13 @@ function PreviewSession(
       noteHasText: props.noteHasText,
       composerVisible: props.composerVisible,
       fitContent: props.detail.kind === "files" && props.markdownPaths.includes(props.path),
+      filePaths: props.detail.kind === "files" ? props.documentPaths : undefined,
+      navigation:
+        props.detail.kind !== "files" ||
+        !props.markdownPaths.includes(props.path) ||
+        documentHeight?.path === props.path
+          ? props.navigation
+          : null,
       commenting: props.commenting && context.presentation === "document",
       targets: props.targets.flatMap(({ feedbackId, target }) =>
         target.kind === "rendered" && target.versionSeq === seq && target.path === props.path
@@ -753,9 +805,11 @@ function PreviewSession(
     props.composerVisible,
     props.targets,
     props.jump,
+    props.navigation,
     props.path,
     props.detail,
     props.markdownPaths,
+    props.documentPaths,
     documentHeight,
     dark,
   ]);
@@ -849,7 +903,7 @@ function PreviewSession(
           // A controlled URL change starts a fresh frame so the verification
           // gate never becomes an extra Back/Forward entry. Native links keep
           // their own history within the mounted published document.
-          key={src}
+          key={`${src}:${documentEpoch}`}
           ref={iframe}
           src={src}
           title={`${props.detail.title || "Artifact"} preview`}

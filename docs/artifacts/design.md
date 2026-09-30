@@ -67,7 +67,9 @@ Opening an artifact uses a centered loading spinner in the application's current
 light/dark theme, with a static indicator when reduced motion is requested. A
 rendered preview stays covered and unfocusable through verification until its
 document is ready. Setup frames never add browser history entries; native links
-within a published document keep their ordinary Back/Forward behavior.
+within a mounted document and page navigation in HTML artifacts keep their
+ordinary Back/Forward behavior. Cross-file links in files artifacts scroll within
+the file stack instead of adding a history entry.
 
 ## Publication and content ownership
 
@@ -165,6 +167,13 @@ Links to published documents use normal directory-relative resolution. The utili
 the preview origin root, not that resource root; arbitrary root-relative rewriting
 and SPA history-route fallback are unsupported. A missing asset remains distinct
 from a client-side route.
+
+In files artifacts, an ordinary link to another captured HTML or Markdown
+document opens its rendered file card, unfolds and hydrates it if needed, and
+scrolls to the requested heading. A link without a fragment opens the file's
+beginning. The destination receives the link's query and fragment; the source
+card keeps its own document. Same-file anchors and HTML artifact page navigation
+retain their native behavior.
 
 ## Reading, selecting, and locating
 

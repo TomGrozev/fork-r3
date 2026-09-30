@@ -99,6 +99,13 @@ export const FileMarkdownOpening: Story = {
   ...Opening,
   args: { detail: { ...artifactFixture, kind: "files" } },
 };
+export const FileHeadingOpening: Story = {
+  ...FileMarkdownOpening,
+  args: {
+    ...FileMarkdownOpening.args,
+    navigation: { route: "#destination-heading", nonce: 1 },
+  },
+};
 
 const cachedHtml =
   '<!doctype html><style>body{margin:0;padding:32px;font:16px/1.65 system-ui}main{max-width:900px;margin:auto}a{color:#86b5ff}pre{padding:16px;background:#8882}</style><main><h1>Already opened Markdown</h1><p>This document can be read while the preview checks run.</p><p><a href="page.md">Document links</a> and feedback become available when the checks finish.</p><pre><code>const version = 1;</code></pre></main>';

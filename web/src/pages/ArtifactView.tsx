@@ -82,6 +82,7 @@ export interface ArtifactRenderedPaneProps {
   path: string;
   commenting: boolean;
   jump: { locator: RenderedLocator | null; nonce: number } | null;
+  navigation?: { route: string; nonce: number } | null;
   targets: { feedbackId: string; target: ArtifactDocumentTarget }[];
   onTarget: (target: ArtifactDocumentTarget) => void;
   onSelection?: (target: ArtifactDocumentTarget, rect: AnchorRect, quote: boolean) => void;
@@ -89,7 +90,7 @@ export interface ArtifactRenderedPaneProps {
   onToggleCommenting?: () => void;
   noteHasText?: boolean;
   composerVisible?: boolean;
-  onDocument: (path: string) => void;
+  onDocument: (path: string, route?: string) => void;
   onFeedback: (id: string) => void;
 }
 export type ArtifactRenderer = (props: ArtifactRenderedPaneProps) => ReactNode;
@@ -193,6 +194,9 @@ function Workspace({
   const [jump, setJump] = useState<ArtifactCodeJump | null>(null);
   const [renderedJump, setRenderedJump] = useState<ArtifactRenderedPaneProps["jump"]>(null);
   const pendingRenderedJump = useRef<ArtifactRenderedPaneProps["jump"]>(null);
+  const [renderedNavigation, setRenderedNavigation] =
+    useState<ArtifactRenderedPaneProps["navigation"]>(null);
+  const pendingRenderedNavigation = useRef<ArtifactRenderedPaneProps["navigation"]>(null);
   const [detailsRequest, setDetailsRequest] = useState(0);
   const [fold, setFold] = useState<FoldSignal | null>(null);
   const [fileViews, setFileViews] = useState<Record<string, "source" | "rendered">>({});
@@ -299,6 +303,8 @@ function Workspace({
     setView((current) => ({ ...current, ...patch }));
     setJump(null);
     setRenderedJump(null);
+    setRenderedNavigation(null);
+    pendingRenderedNavigation.current = null;
     setNotice("");
     setPopoverFeedback(null);
   }, []);
@@ -600,9 +606,15 @@ function Workspace({
     setFold({ mode: "unfold", path, nonce });
   }, [ready, detail.kind, positionKey]);
   const finishCodeJump = useCallback((nonce: number) => {
-    if (pendingRenderedJump.current?.nonce !== nonce || jumpNonce.current !== nonce) return;
-    setRenderedJump(pendingRenderedJump.current);
-    pendingRenderedJump.current = null;
+    if (jumpNonce.current !== nonce) return;
+    if (pendingRenderedJump.current?.nonce === nonce) {
+      setRenderedJump(pendingRenderedJump.current);
+      pendingRenderedJump.current = null;
+    }
+    if (pendingRenderedNavigation.current?.nonce === nonce) {
+      setRenderedNavigation(pendingRenderedNavigation.current);
+      pendingRenderedNavigation.current = null;
+    }
   }, []);
   useArtifactCodeJump({
     scopeRef: paneRef,
@@ -923,13 +935,18 @@ function Workspace({
                                 path: file.path,
                                 commenting,
                                 jump: view.path === file.path ? renderedJump : null,
+                                navigation: view.path === file.path ? renderedNavigation : null,
                                 targets: renderedTargets,
                                 onTarget: anchor,
                                 ...selectionProps,
-                                onDocument: (next) => {
+                                onDocument: (next, route) => {
                                   if (next === file.path) return;
                                   changeView({ path: next, representation: "rendered" });
                                   const nonce = ++jumpNonce.current;
+                                  pendingRenderedNavigation.current = {
+                                    route: route ?? "#",
+                                    nonce,
+                                  };
                                   setJump({ path: next, side: "new", nonce });
                                   setFold({ mode: "unfold", path: next, nonce });
                                 },

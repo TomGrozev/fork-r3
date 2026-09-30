@@ -4,6 +4,7 @@ import { connectPreview } from "../web/src/preview-channel.ts";
 import { installMarkdownLayout, installMarkdownTheme } from "../web/src/preview-markdown.ts";
 import { installMarkdownDocument } from "../web/src/preview-markdown-document.ts";
 import { createPreviewMedia } from "../web/src/preview-media.ts";
+import { installPreviewNavigation } from "../web/src/preview-navigation.ts";
 import { installPreviewRuntime } from "../web/src/preview-runtime.ts";
 import { installPreviewScroll } from "../web/src/preview-scroll.ts";
 import { createArtifactUtility } from "../web/src/preview-utility.ts";
@@ -35,6 +36,7 @@ const install = () => {
 (${installPreviewScroll.toString()})(config, connection, ${restoreReadingPosition.toString()});
 (${installMarkdownTheme.toString()})(config, connection, markdown);
 (${installMarkdownLayout.toString()})(config, connection, markdown);
+(${installPreviewNavigation.toString()})(config, connection);
 const getUserMedia = (${createPreviewMedia.toString()})(config, connection, ${previewIceComplete.toString()});
 Object.defineProperty(globalThis, "__r3ArtifactUtility", {value: (${createArtifactUtility.toString()})(config, connection, getUserMedia)});
 (${installPreviewRuntime.toString()})(config, ${normalizeRenderedText.toString()}, connection, ${observeTextSelection.toString()}, ${composerKeyAction.toString()}); };

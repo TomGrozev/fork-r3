@@ -37,6 +37,10 @@ export interface PreviewDisplay {
   theme?: PreviewTheme;
   // Retained Markdown in file stacks grows with the document's natural height.
   fitContent?: boolean;
+  // File-stack document links scroll to another published card. HTML artifacts
+  // omit these fields and retain their native document navigation.
+  filePaths?: string[];
+  navigation?: { route: string; nonce: number } | null;
   commenting: boolean;
   noteHasText?: boolean;
   composerVisible?: boolean;

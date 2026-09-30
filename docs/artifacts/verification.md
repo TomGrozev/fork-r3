@@ -51,6 +51,7 @@ R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-artifact-selection.ts
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-artifact-favicon.ts
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-artifact-projects.ts
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-display-preferences.ts
+R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-preview-file-navigation.ts
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-markdown-theme.ts
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-feedback-interactions.ts
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-feedback-creation.ts
@@ -75,6 +76,7 @@ R3_TEST_BROWSER="$TEST_UNSUPPORTED_CHROMIUM" R3_TEST_UNSUPPORTED=1 bun scripts/t
 | `test-artifact-favicon.ts` | Agent feedback invalidations add a rendered blue favicon dot; human replies and resolution clear it; navigation restores the ordinary icon and reopening retains unhandled attention |
 | `test-artifact-projects.ts` | Inferred project names, renames, and deletion update an already-open artifact home through committed-write events |
 | `test-display-preferences.ts` | Native site-data denial still boots the complete files workspace; failed preference writes preserve file-panel collapse/resize/reset, font and theme changes, and feedback docking/floating controls without uncaught errors |
+| `test-preview-file-navigation.ts` | Desktop and phone-sized file stacks scroll cross-file links to visible headings or document start, retain source identity and history, and handle cold/folded destinations, query clearing, native anchors, and scripted document replacement |
 | `test-artifact-app.ts` | Copies the compiled binary outside the checkout; migrates an isolated legacy store; opens preserved URLs/threads; verifies backup and restart; exercises embedded assets, rendered human feedback, remote publication by another agent, pinned version selection, and Markdown/binary reads after deleting the publisher directory |
 | `test-preview-browser.ts` | Capability gate, scoped resources, modules, utility RPC/subscriptions, element capture, contextual Locate, and normal page interaction; unsupported mode checks that no published file is requested |
 | `test-markdown-theme.ts` | All four system/r3 theme combinations, live theme changes, retained syntax colors, unchanged authored HTML and stored bytes; full-height Markdown, fold/unfold reuse without document reload, width and late-image resizing, outer-pane Locate on mounted/new previews, reachable comment controls, and file-divider dragging over the opaque frame |
