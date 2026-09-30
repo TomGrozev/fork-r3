@@ -547,6 +547,39 @@ html.dark .r3-ref {
   color: var(--color-primary-300);
 }
 
+/* Collapse the handoff slot while its action fades toward the feedback toggle. */
+.r3-nav-handoff {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-content: end;
+  transition:
+    grid-template-columns 0.18s ease-out,
+    visibility 0s;
+}
+.r3-nav-handoff[aria-hidden="true"] {
+  grid-template-columns: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-columns 0.18s ease-out,
+    visibility 0s 0.18s;
+}
+.r3-nav-handoff-content {
+  transition:
+    opacity 0.18s ease-out,
+    transform 0.18s ease-out;
+}
+.r3-nav-handoff[aria-hidden="true"] .r3-nav-handoff-content {
+  opacity: 0;
+  transform: translateX(0.5rem);
+}
+@media (prefers-reduced-motion: reduce) {
+  .r3-nav-handoff,
+  .r3-nav-handoff[aria-hidden="true"],
+  .r3-nav-handoff-content {
+    transition: none;
+  }
+}
+
 /* A short fade + slight upward slide, played on mount — used to animate the
    feedback panel's list when the Active/Resolved filter switches (the switched-in
    list is re-keyed, so it remounts and replays this). A plain author class (not a

@@ -101,15 +101,23 @@ export const FeedbackToggle: Story = {
     await expect(canvas.getByRole("button", { name: "Hide feedback" })).toHaveAccessibleDescription(
       /1 unhandled thread/,
     );
+    await expect(canvas.queryByRole("button", { name: "Use in agent" })).toBeNull();
     await userEvent.click(canvas.getByRole("button", { name: "Hide feedback" }));
     await expect(canvas.getByRole("button", { name: "Show feedback" })).toHaveAttribute(
       "aria-pressed",
       "false",
     );
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Use in agent" })).toBeVisible());
     await userEvent.click(canvas.getByRole("button", { name: "Show feedback" }));
     await expect(canvas.getByRole("button", { name: "Hide feedback" })).toHaveAttribute(
       "aria-pressed",
       "true",
+    );
+    await expect(canvas.queryByRole("button", { name: "Use in agent" })).toBeNull();
+    await waitFor(() =>
+      expect(
+        canvasElement.querySelector<HTMLElement>(".r3-nav-handoff")!.getBoundingClientRect().width,
+      ).toBe(0),
     );
   },
 };
@@ -265,7 +273,7 @@ export const NavbarActions: Story = {
   render: (args) => {
     const [selected, setSelected] = useState<number | null>(args.selectedVersion ?? 1);
     const [commenting, setCommenting] = useState(false);
-    const [feedbackVisible, setFeedbackVisible] = useState(true);
+    const [feedbackVisible, setFeedbackVisible] = useState(args.feedbackVisible ?? true);
     return (
       <ArtifactHeader
         {...args}
@@ -314,6 +322,7 @@ export const PendingSend: Story = {
   ...NavbarActions,
   args: {
     ...NavbarActions.args,
+    feedbackVisible: false,
     selectedVersion: 3,
     detail: {
       ...NavbarActions.args!.detail!,
@@ -334,14 +343,23 @@ export const PendingSend: Story = {
     const send = canvas.getByRole("button", { name: "Send to agent · 1" });
     await waitFor(() => expect(send).toBeEnabled());
     const action = send.getBoundingClientRect();
-    const toggle = canvas.getByRole("button", { name: "Hide feedback" }).getBoundingClientRect();
+    const toggle = canvas.getByRole("button", { name: "Show feedback" }).getBoundingClientRect();
     await expect(
       Math.abs(action.top + action.height / 2 - toggle.top - toggle.height / 2),
     ).toBeLessThan(0.5);
     await expect(send.getBoundingClientRect().right).toBeLessThan(
-      canvas.getByRole("button", { name: "Hide feedback" }).getBoundingClientRect().left,
+      canvas.getByRole("button", { name: "Show feedback" }).getBoundingClientRect().left,
     );
     await expect(canvasElement.querySelector("[data-feedback-attention]")).toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "Show feedback" }));
+    await expect(canvas.queryByRole("button", { name: "Send to agent · 1" })).toBeNull();
+    await expect(send.closest("[inert]")).not.toBeNull();
+    await waitFor(() => expect(send).not.toBeVisible());
+    await expect(
+      canvas.getByRole("button", { name: "Hide feedback" }).getBoundingClientRect().left,
+    ).toBe(toggle.left);
+    await userEvent.click(canvas.getByRole("button", { name: "Hide feedback" }));
+    await waitFor(() => expect(send).toBeVisible());
   },
 };
 export const PendingSendDark: Story = { ...PendingSend, globals: { theme: "dark" } };
@@ -363,12 +381,16 @@ export const FeedbackCommand: Story = {
     await userEvent.keyboard("{Escape}");
     await expect(canvas.queryByRole("dialog", { name: "Read feedback in your agent" })).toBeNull();
     await expect(button).toHaveFocus();
+    await userEvent.click(button);
+    await userEvent.click(canvas.getByRole("button", { name: "Show feedback" }));
+    await expect(canvas.queryByRole("dialog", { name: "Read feedback in your agent" })).toBeNull();
+    await expect(canvas.queryByRole("button", { name: "Use in agent" })).toBeNull();
   },
 };
 export const FeedbackCommandDark: Story = { ...FeedbackCommand, globals: { theme: "dark" } };
 export const ConnectWithoutPendingFeedback: Story = {
   ...FeedbackCommand,
-  args: { detail: { ...artifactFixture, feedback: [] } },
+  args: { ...FeedbackCommand.args, detail: { ...artifactFixture, feedback: [] } },
 };
 export const UnsentReply: Story = {
   ...PendingSend,

@@ -343,7 +343,11 @@ agent feedback. Viewing the tab does not clear it; a human reply or resolution d
 Leaving the artifact restores the ordinary icon, including if its badge asset is
 still loading.
 Unsent human input shows a desktop navbar handoff button immediately before
-the feedback toggle, available while the panel is hidden. With no listener/watcher,
+the feedback toggle, available while the panel is hidden. Both navbar handoff
+variants disappear while the dock is expanded or floating, leaving the panel's
+control. Hiding the navbar action fades it right toward the feedback toggle and
+collapses its space; showing it reverses that transition. Hidden controls are inert,
+and reduced-motion preferences disable the transition. With no listener/watcher,
 **Use in agent** opens a small command popover, even without pending feedback.
 It shows `r3 feedback fetch <id>` and a copy icon, with instructions to run it using
 `!` in the agent harness. Copying leaves feedback pending until the CLI runs.

@@ -25,11 +25,17 @@ import { ArtifactOpenLatest, ArtifactVersionSelect } from "./ArtifactVersionSele
 import { MessageProse } from "./Message.tsx";
 import { SettingsDialog } from "./SettingsPopup.tsx";
 
-function ArtifactSendFeedback({ detail }: { detail: ArtifactDetail }) {
+function ArtifactSendFeedback({ detail, visible }: { detail: ArtifactDetail; visible: boolean }) {
   const handoff = useArtifactHandoff(detail);
   return (
-    <div className="relative flex shrink-0 items-center max-md:hidden">
-      {handoff.showAction && <ArtifactHandoffButton handoff={handoff} />}
+    <div className="r3-nav-handoff relative shrink-0" aria-hidden={!visible} inert={!visible}>
+      <div className="r3-nav-handoff-content flex min-w-0 justify-end">
+        {handoff.showAction && (
+          <div className="flex shrink-0 items-center pr-2">
+            <ArtifactHandoffButton handoff={handoff} active={visible} />
+          </div>
+        )}
+      </div>
       {(handoff.notice || handoff.error) && (
         <div className="absolute right-0 top-full z-50 mt-2 flex w-72 max-w-[calc(100vw-1rem)] items-start gap-2 rounded-lg border border-neutral-300 bg-white p-3 text-xs r3-popover dark:border-neutral-700 dark:bg-neutral-950">
           <p
@@ -241,14 +247,16 @@ export function ArtifactHeader({
       </div>
       {detail.state === "archived" && <Pill>Archived</Pill>}
       <div className="min-w-0 flex-1" />
-      {onToggleFeedback && <ArtifactSendFeedback detail={detail} />}
       {onToggleFeedback && (
-        <ArtifactFeedbackToggle
-          artifactId={detail.id}
-          feedback={detail.feedback}
-          visible={!!feedbackVisible}
-          onToggle={onToggleFeedback}
-        />
+        <div className="flex shrink-0 items-center max-md:hidden">
+          <ArtifactSendFeedback detail={detail} visible={!feedbackVisible} />
+          <ArtifactFeedbackToggle
+            artifactId={detail.id}
+            feedback={detail.feedback}
+            visible={!!feedbackVisible}
+            onToggle={onToggleFeedback}
+          />
+        </div>
       )}
       {onToggleCommenting && (
         <Button

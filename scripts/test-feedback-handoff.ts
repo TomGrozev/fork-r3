@@ -441,6 +441,11 @@ try {
   );
   const pendingBeforeCopy = storage.conversations.unsent(artifact.id);
   const feedbackReadRequestsBeforeCopy = feedbackReadRequests;
+  await page.evaluate("document.querySelector('[aria-label=\"Hide feedback\"]').click()");
+  await eventually(
+    () => page.evaluate(`getComputedStyle(${navButton}).visibility === 'visible'`),
+    "navbar handoff returns when feedback is hidden",
+  );
   await page.evaluate(`(${navButton}).click()`);
   const popup =
     "document.querySelector('[role=dialog][aria-label=\"Read feedback in your agent\"]')";
