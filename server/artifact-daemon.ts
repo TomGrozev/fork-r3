@@ -1,7 +1,11 @@
 import { dirname, join } from "node:path";
 import index from "../web/index.html";
 import { loadApplicationAssets } from "./application-assets.ts";
-import { artifactPreviewSettings, artifactProjectSettings } from "./artifact-config.ts";
+import {
+  artifactAuthSettings,
+  artifactPreviewSettings,
+  artifactProjectSettings,
+} from "./artifact-config.ts";
 import { startArtifactServer } from "./artifact-server.ts";
 import { openArtifactStorage } from "./artifact-storage.ts";
 import {
@@ -51,6 +55,7 @@ export async function startArtifactDaemon(): Promise<void> {
     storage = await openArtifactStorage({
       databasePath: stateDbPath(),
       projectGrouping: artifactProjectSettings(process.env, readConfig()),
+      ...artifactAuthSettings(process.env, readConfig()),
     });
     const token = getToken();
     runtime = startArtifactServer({
@@ -84,23 +89,10 @@ export async function startArtifactDaemon(): Promise<void> {
       exec: process.execPath,
       argv: process.argv,
     });
-    const authentication = storage.authentication;
-    const sweep = setInterval(
-      () => {
-        try {
-          authentication.expireSessions();
-        } catch {
-          console.error("r3: session housekeeping failed");
-        }
-      },
-      6 * 60 * 60_000,
-    );
-    sweep.unref();
     let closing = false;
     const shutdown = async () => {
       if (closing) return;
       closing = true;
-      clearInterval(sweep);
       await localAgents?.stop();
       await runtime!.stop();
       storage!.close();

@@ -32,6 +32,7 @@ implementation checklists and historical test counts are kept in Git history.
 | Snapshot acknowledgment after successful stdout, failed/lost output, concurrent edits/reverts, restart, selective history | `cli/artifact-output.test.ts`, `cli/artifact-commands.test.ts`, `server/artifact-conversations.test.ts`, `server/artifact-api.test.ts`, `server/artifact-storage.test.ts` |
 | Legacy identity/content/evidence, defaults, backup, failed/interrupted upgrade, reopen | `server/migration*.test.ts`, `server/artifact-storage.test.ts` |
 | Authenticated API/SSE, full-origin checks, resource bytes/ranges, scoped preview access | `server/artifact-api.test.ts`, `server/artifact-auth.test.ts`, `server/artifact-resources.test.ts`, `server/preview-*.test.ts` |
+| Login-token last use, inactivity boundaries, soft revocation, restart cleanup, configuration | `server/auth.test.ts`, `server/artifact-auth.test.ts`, `server/artifact-storage.test.ts`, `server/artifact-config.test.ts`, `cli/artifact-settings.test.ts` |
 | Draft retention, version selection, source/diff Locate, folded composer, phone layout | `web/src/artifact-*.test.ts`, `web/src/pages/ArtifactView.stories.tsx`, `ArtifactHome.stories.tsx`, component stories |
 | Device constraints, stale/pending permission results, capture shutdown, bounded RTC answers | `web/src/preview-capture.test.ts` |
 | Demo owner edits, delivery, claims, publication and archive behavior | `web/demo/artifact-api.test.ts`, `web/demo/artifact-backend.test.ts` |

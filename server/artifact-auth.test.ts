@@ -10,10 +10,12 @@ let db: Database;
 let authentication: AuthService;
 let app: Hono;
 let policy: ArtifactAuthPolicy;
+let time: string;
 beforeEach(() => {
   db = new Database(":memory:");
   createArtifactTables(db);
-  authentication = new AuthService(db);
+  time = "2026-09-01T00:00:00.000Z";
+  authentication = new AuthService(db, () => time);
   policy = {
     token: randomBytes(32).toString("base64url"),
     requireLogin: false,
@@ -35,6 +37,41 @@ function request(path: string, init: RequestInit = {}) {
 }
 
 describe("artifact application auth boundary", () => {
+  test("cookie requests refresh last use only after origin checks and expired cookies cannot log in", async () => {
+    policy.requireLogin = true;
+    const issued = authentication.createLoginToken("Browser");
+    const response = await request("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: issued.token }),
+    });
+    const headers = { cookie: response.headers.get("set-cookie")!.split(";", 1)[0] };
+    time = "2026-09-14T00:00:00.000Z";
+    expect(
+      (await request("/api/private", { headers: { ...headers, origin: "null" } })).status,
+    ).toBe(403);
+    expect(authentication.listTokens()[0].lastUsedAt).toBe("2026-09-01T00:00:00.000Z");
+    expect((await request("/api/private", { headers })).status).toBe(200);
+    expect((await request("/api/auth/tokens", { headers })).status).toBe(200);
+    expect(authentication.listTokens()[0].lastUsedAt).toBe(time);
+    time = "2026-09-28T00:00:00.000Z";
+    expect((await request("/api/private", { headers })).status).toBe(401);
+    expect((await request("/api/events", { headers })).status).toBe(401);
+    expect((await request("/api/boot", { headers })).status).toBe(401);
+    expect(
+      (
+        await request("/api/auth/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token: issued.token }),
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      await (await request("/api/auth/tokens", { headers: { "x-r3-token": policy.token } })).json(),
+    ).toEqual([]);
+  });
+
   test("only local same-origin bootstrap exposes the token and every data stream requires authentication", async () => {
     expect(await (await request("/api/boot")).json()).toEqual({
       needsAuth: false,

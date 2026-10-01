@@ -135,9 +135,9 @@ export interface AuthTokenInfo {
   id: string; // authtok_<short> — the handle used to revoke
   label: string | null; // human hint (device/purpose)
   createdAt: string;
-  lastUsedAt: string | null; // last successful login with this token; null if unused
+  lastUsedAt: string | null; // last successful login or session authentication; null if unused
   // (revoked tokens are dropped from every listing, so there's no `revokedAt` here —
-  // the audit-trail column stays DB-side; see server/auth.ts AuthService.)
+  // the revocation timestamp stays DB-side until startup cleanup; see AuthService.)
   // Request-scoped, not stored: true for the token that minted the caller's own
   // session cookie (GET /api/auth/tokens only). Revoking it would sign the caller
   // out, so the server refuses that DELETE and the UI disables its revoke button.

@@ -144,6 +144,9 @@ atomically clears durable records; restore requires a new publication/registrati
 - `POST /api/auth/login { token }` mints a browser session; `POST /api/auth/logout`
   destroys it. `GET/POST/DELETE /api/auth/tokens` and `DELETE .../tokens/:id`
   manage revocable login tokens. Current-session individual revocation conflicts.
+  Listings omit automatically expired tokens; `lastUsedAt` records successful
+  login or cookie authentication. Inactivity policy and startup cleanup belong to
+  the [security model](../security-model/SKILL.md#browser-login-and-configuration).
 - `GET /api/themes` and `GET /api/theme-style?theme=` return available themes and
   the shared source palette stylesheet.
 

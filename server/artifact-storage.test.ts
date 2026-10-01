@@ -42,6 +42,42 @@ const publication = () => ({
 });
 
 describe("private artifact storage bootstrap", () => {
+  test("restart purges revoked and overdue tokens while preserving recent sessions and last use", async () => {
+    let currentTime = time;
+    const settings = { ...options(), clock: () => currentTime, authTokenIdleDays: 2 };
+    storage = await openArtifactStorage(settings);
+    const stale = storage.authentication.createLoginToken("Stale");
+    const staleSession = storage.authentication.mintSession(stale.info.id);
+    const unused = storage.authentication.createLoginToken("Unused");
+    const revoked = storage.authentication.createLoginToken("Revoked");
+    storage.authentication.revokeToken(revoked.info.id);
+    currentTime = "2026-09-02T00:00:00.000Z";
+    const active = storage.authentication.createLoginToken("Recent");
+    const activeSession = storage.authentication.mintSession(active.info.id);
+    currentTime = "2026-09-03T00:00:00.000Z";
+    storage.close();
+    storage = await openArtifactStorage(settings);
+    const probe = new Database(settings.databasePath, { readonly: true });
+    try {
+      expect(probe.query("SELECT id, last_used_at FROM auth_tokens").all()).toEqual([
+        { id: active.info.id, last_used_at: "2026-09-02T00:00:00.000Z" },
+      ]);
+      expect(probe.query("SELECT token_id FROM auth_sessions").all()).toEqual([
+        { token_id: active.info.id },
+      ]);
+    } finally {
+      probe.close();
+    }
+    expect(storage.authentication.verifyLogin(stale.token)).toBeNull();
+    expect(storage.authentication.verifyLogin(unused.token)).toBeNull();
+    expect(storage.authentication.verifyLogin(revoked.token)).toBeNull();
+    expect(storage.authentication.sessionValid(staleSession.cookieValue)).toBe(false);
+    expect(storage.authentication.sessionValid(activeSession.cookieValue)).toBe(true);
+    expect(storage.authentication.listTokens()).toEqual([
+      { ...active.info, lastUsedAt: currentTime },
+    ]);
+  });
+
   test("a snapshot remains valid across restart but not an edit and revert after restart", async () => {
     storage = await openArtifactStorage(options());
     const id = storage.artifacts.create({ actor, kind: "files" }).id;

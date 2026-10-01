@@ -137,6 +137,7 @@ export interface PersistedConfig {
   publicUrl?: string;
   allowedHosts?: string[];
   requireLogin?: boolean;
+  authTokenIdleDays?: number;
   previewPort?: number;
   previewBaseUrl?: string;
   projectGrouping?: "remote" | "manual";
@@ -169,6 +170,12 @@ function sanitizeConfig(o: Record<string, unknown>): PersistedConfig {
     out.allowedHosts = o.allowedHosts as string[];
   }
   if (typeof o.requireLogin === "boolean") out.requireLogin = o.requireLogin;
+  if (
+    typeof o.authTokenIdleDays === "number" &&
+    Number.isSafeInteger(o.authTokenIdleDays) &&
+    o.authTokenIdleDays > 0
+  )
+    out.authTokenIdleDays = o.authTokenIdleDays;
   if (typeof o.previewPort === "number" && Number.isInteger(o.previewPort))
     out.previewPort = o.previewPort;
   if (typeof o.previewBaseUrl === "string") out.previewBaseUrl = o.previewBaseUrl;

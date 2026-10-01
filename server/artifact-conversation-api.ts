@@ -196,7 +196,7 @@ export function installArtifactConversations(
   const expiry = setInterval(() => {
     for (const artifactId of conversations.expireClaims())
       collaboration.broadcast({ type: "presence-changed", artifactId });
-    storage.authentication.expireSessions();
+    storage.authentication.expireTokens();
   }, 60_000);
   expiry.unref();
   return {

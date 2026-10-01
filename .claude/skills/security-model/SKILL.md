@@ -47,6 +47,17 @@ its transport URL uses the application address.
 Importing it opens no database. Revocation and session deletion are transactional;
 migration preserves their existing records. A token is shown only when minted.
 
+Login tokens soft-revoke after `authTokenIdleDays` of inactivity (14 days by
+default; a positive integer). `R3_AUTH_TOKEN_IDLE_DAYS` overrides persisted config.
+Successful login and cookie authentication update `last_used_at`; never-used
+tokens age from `created_at`. Authentication checks expire overdue tokens before
+recording use, so expired credentials cannot revive themselves. A once-per-minute
+sweep also soft-revokes idle tokens. Their sessions immediately fail the token
+revocation check. Automatic cleanup retains token/session rows during the run;
+storage startup expires overdue tokens and deletes revoked tokens, their sessions,
+and expired sessions. Manual revocation retains its transactional session deletion.
+The separate master API token is outside this login-token policy.
+
 `REQUIRE_LOGIN` defaults on when publicUrl, allowedHosts, or bind config indicates
 non-loopback access. A setting is policy, not proof of the network topology. On a
 local no-login instance, boot supplies the master token to the same-origin browser.
@@ -63,7 +74,8 @@ credentials. Both clients and probes reject redirects when carrying credentials.
 
 Settings resolve environment → `$XDG_CONFIG_HOME/r3/config.json` → defaults.
 Configuration contains no secret. Supported settings include application bind,
-port, publicUrl, allowedHosts and requireLogin, plus previewPort and previewBaseUrl.
+port, publicUrl, allowedHosts, requireLogin and authTokenIdleDays, plus previewPort
+and previewBaseUrl.
 Changes take effect at restart. With no preview override, the authenticated
 preview-creation request chooses the browser's application origin and the existing
 listener dispatches `/__r3_preview/` through the preview module after the Host

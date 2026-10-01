@@ -61,6 +61,12 @@ Every version reference includes artifact identity. A sequence such as 2 is mean
 | viewed_marks | artifact_id + key | Existing read-progress identity, including representation when needed |
 | auth_tokens / auth_sessions | id | Existing authentication records and hashed secret values; independent of artifact content |
 
+Authentication retains `last_used_at` for successful logins and cookie requests.
+Automatic inactivity expiry sets `revoked_at` and leaves rows intact until storage
+startup removes revoked tokens and their sessions. The
+[security model](../../.claude/skills/security-model/SKILL.md#browser-login-and-configuration)
+owns inactivity configuration and validation.
+
 There is no Bundle table, withdrawal state, live worktree requirement, or separate history table for each artifact kind. The SQL repeats kind on some children so composite foreign keys and checks can enforce representation compatibility; it is not independently editable metadata.
 
 ## One version table, three content shapes

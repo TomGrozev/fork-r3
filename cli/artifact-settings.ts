@@ -17,6 +17,7 @@ const NAMES = [
   "publicUrl",
   "allowedHosts",
   "requireLogin",
+  "authTokenIdleDays",
   "previewPort",
   "previewBaseUrl",
   "projectGrouping",
@@ -60,6 +61,13 @@ export function configCommand(argv: string[]): void {
     const value = raw?.trim();
     if (!value) throw new ArtifactCommandError(`Use r3 config unset ${name} to clear this setting`);
     switch (name) {
+      case "authTokenIdleDays": {
+        const days = Number(value);
+        if (!Number.isSafeInteger(days) || days < 1)
+          throw new ArtifactCommandError("authTokenIdleDays must be a positive integer");
+        next.authTokenIdleDays = days;
+        break;
+      }
       case "projectGrouping":
         if (value !== "remote" && value !== "manual")
           throw new ArtifactCommandError("projectGrouping expects remote or manual");

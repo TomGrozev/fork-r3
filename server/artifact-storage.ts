@@ -26,6 +26,7 @@ export interface ArtifactStorageOptions {
   clock?: () => string;
   isWatching?: (id: string) => boolean;
   projectGrouping?: ProjectGroupingOptions;
+  authTokenIdleDays?: number;
 }
 
 export interface ArtifactStorage {
@@ -117,7 +118,7 @@ export async function openArtifactStorage(
       listeners,
     );
     const conversations = new ArtifactConversations(db, artifacts, clock);
-    const authentication = new AuthService(db, clock);
+    const authentication = new AuthService(db, clock, options.authTokenIdleDays);
     async function collectBlobs(): Promise<number> {
       const removed = await blobs.collect(
         () =>
@@ -137,7 +138,7 @@ export async function openArtifactStorage(
     }
     await collectBlobs();
     conversations.expireClaims();
-    authentication.expireSessions();
+    authentication.cleanupOnStartup();
     return {
       listeners,
       artifacts,
