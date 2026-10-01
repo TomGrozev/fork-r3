@@ -9,6 +9,22 @@ export interface ImagePoint {
   x: number;
   y: number;
 }
+
+// Crop evidence stays in the original captured pixels after an image is resized.
+export function mapImageCrop(
+  crop: ImageCrop,
+  displayed: { width: number; height: number },
+  original: ImageCrop,
+): ImageCrop {
+  const scaleX = original.width / displayed.width;
+  const scaleY = original.height / displayed.height;
+  return {
+    x: original.x + crop.x * scaleX,
+    y: original.y + crop.y * scaleY,
+    width: crop.width * scaleX,
+    height: crop.height * scaleY,
+  };
+}
 export interface ImageDrawing {
   tool: Exclude<ImageTool, "crop">;
   points: ImagePoint[];

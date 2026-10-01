@@ -40,6 +40,7 @@ import {
 import { DiffView } from "../components/DiffView.tsx";
 import { FileBrowser } from "../components/FileBrowser.tsx";
 import type { FoldSignal } from "../components/FileCard.tsx";
+import { ImagePreparation } from "../components/ImagePreparation.tsx";
 import { JumpToFile } from "../components/JumpToFile.tsx";
 import { QuoteBubble, type QuotePos } from "../components/Message.tsx";
 import { DiffLayoutToggle, PaneToolbar, TOOLBAR_BTN } from "../components/PaneToolbar.tsx";
@@ -174,7 +175,9 @@ export function ArtifactWorkspace(props: ArtifactWorkspaceProps) {
   const detail = useOptimisticArtifact(props.detail);
   return (
     <ArtifactPreviewSecurityProvider>
-      <Workspace {...props} detail={detail} />
+      <ImagePreparation>
+        <Workspace {...props} detail={detail} />
+      </ImagePreparation>
     </ArtifactPreviewSecurityProvider>
   );
 }

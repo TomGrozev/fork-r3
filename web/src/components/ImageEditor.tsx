@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { ATTACHMENT_LIMITS } from "../../../shared/attachments.ts";
 import {
   drawImageAnnotations,
   emptyImageHistory,
@@ -19,8 +20,10 @@ import {
   imageCrop,
   imageHistory,
 } from "../image-edit.ts";
+import { type ImageOutput, renderImageOutput } from "../image-output.ts";
 import { suspendKeys } from "../keys.ts";
 import { Button } from "../ui.tsx";
+import { ImageOptimization } from "./ImageOptimization.tsx";
 
 type Gesture = {
   pointerId: number;
@@ -38,12 +41,14 @@ const tools: { id: ImageTool; label: string }[] = [
 
 export function ImageEditor({
   blob,
+  startOptimizing = false,
   onCancel,
   onSave,
 }: {
   blob: Blob;
+  startOptimizing?: boolean;
   onCancel: () => void;
-  onSave: (blob: Blob, crop: ImageCrop) => Promise<void>;
+  onSave: (output: ImageOutput, crop: ImageCrop) => Promise<void>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -56,6 +61,7 @@ export function ImageEditor({
   const [color, setColor] = useState("#ef4444");
   const [width, setWidth] = useState(4);
   const [saving, setSaving] = useState(false);
+  const [optimizing, setOptimizing] = useState(startOptimizing);
   const [error, setError] = useState("");
   const title = useId();
   const instructions = useId();
@@ -82,10 +88,20 @@ export function ImageEditor({
     setGesture(null);
     setSize({ width: 0, height: 0 });
     setError("");
+    setOptimizing(startOptimizing);
     void createImageBitmap(blob)
       .then((image) => {
         if (!current) {
           image.close();
+          return;
+        }
+        if (
+          !image.width ||
+          !image.height ||
+          image.width * image.height > ATTACHMENT_LIMITS.pixels
+        ) {
+          image.close();
+          setError("Images must be at most 20 megapixels");
           return;
         }
         bitmap.current = image;
@@ -99,7 +115,7 @@ export function ImageEditor({
       bitmap.current?.close();
       bitmap.current = null;
     };
-  }, [blob]);
+  }, [blob, startOptimizing]);
   useLayoutEffect(() => {
     if (!canvas.current || !bitmap.current) return;
     const ctx = canvas.current.getContext("2d")!;
@@ -162,25 +178,18 @@ export function ImageEditor({
     activeGesture.current = null;
     setGesture(null);
   };
-  const save = async () => {
+  const save = async (accepted?: ImageOutput) => {
     if (!bitmap.current || saving || activeGesture.current) return;
     setSaving(true);
     setError("");
     try {
       const area = present.crop ?? { x: 0, y: 0, ...size };
-      const output = document.createElement("canvas");
-      output.width = area.width;
-      output.height = area.height;
-      const ctx = output.getContext("2d")!;
-      ctx.translate(-area.x, -area.y);
-      ctx.drawImage(bitmap.current, 0, 0);
-      drawImageAnnotations(ctx, present.drawings);
-      const result = await new Promise<Blob>((resolve, reject) =>
-        output.toBlob(
-          (image) => (image ? resolve(image) : reject(new Error("Unable to prepare image"))),
-          "image/png",
-        ),
-      );
+      const result = accepted ?? (await renderImageOutput(bitmap.current, present));
+      if (result.blob.size > ATTACHMENT_LIMITS.bytes) {
+        setOptimizing(true);
+        setSaving(false);
+        return;
+      }
       await onSave(result, area);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Unable to save image");
@@ -191,7 +200,7 @@ export function ImageEditor({
     <dialog
       ref={dialog}
       aria-labelledby={title}
-      aria-describedby={instructions}
+      aria-describedby={optimizing ? undefined : instructions}
       onCancel={(event) => {
         event.preventDefault();
         if (!saving) onCancel();
@@ -203,6 +212,7 @@ export function ImageEditor({
           event.target.closest("input, textarea, select, [contenteditable=true]");
         if (
           field ||
+          optimizing ||
           busy ||
           activeGesture.current ||
           event.repeat ||
@@ -218,160 +228,174 @@ export function ImageEditor({
       }}
       className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-5xl overflow-auto rounded-xl border border-neutral-300 bg-white p-4 text-neutral-900 r3-modal backdrop:bg-black/50 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
     >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 id={title} className="text-sm font-semibold">
-          Edit image
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            disabled={busy || !history.past.length}
-            title="Undo (Ctrl/⌘ Z)"
-            onClick={() => dispatch({ type: "undo" })}
-          >
-            Undo
-          </Button>
-          <Button
-            type="button"
-            disabled={busy || !history.future.length}
-            title="Redo (Ctrl/⌘ Shift Z)"
-            onClick={() => dispatch({ type: "redo" })}
-          >
-            Redo
-          </Button>
-          <Button
-            type="button"
-            disabled={busy || !present.drawings.length}
-            onClick={() => edit({ ...present, drawings: [] })}
-          >
-            Clear drawings
-          </Button>
-        </div>
-      </div>
-      <div className="mb-3 flex flex-wrap items-center gap-3 border-y border-neutral-200 py-2 dark:border-neutral-800">
-        <fieldset aria-label="Image tools" className="flex flex-wrap gap-1">
-          {tools.map((item) => (
+      <h2 id={title} className="mb-3 text-sm font-semibold">
+        {optimizing ? "Optimize image" : "Edit image"}
+      </h2>
+      <div className={optimizing ? "hidden" : undefined}>
+        <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              key={item.id}
-              disabled={busy}
-              variant={tool === item.id ? "primary" : "default"}
-              aria-pressed={tool === item.id}
-              onClick={() => {
-                cancelGesture();
-                setTool(item.id);
-              }}
+              disabled={busy || !history.past.length}
+              title="Undo (Ctrl/⌘ Z)"
+              onClick={() => dispatch({ type: "undo" })}
             >
-              {item.label}
+              Undo
             </Button>
-          ))}
-        </fieldset>
-        <label className="flex items-center gap-2 text-xs text-neutral-500">
-          Color
-          <input
-            type="color"
-            aria-label="Drawing color"
-            value={color}
-            disabled={busy}
-            onChange={(event) => setColor(event.target.value)}
-            className="h-8 w-9 cursor-pointer border border-neutral-300 bg-transparent p-0.5 dark:border-neutral-700"
-          />
-        </label>
-        <label className="flex items-center gap-2 text-xs text-neutral-500">
-          Stroke
-          <select
-            aria-label="Stroke width"
-            value={width}
-            disabled={busy}
-            onChange={(event) => setWidth(Number(event.target.value))}
-            className="h-8 border border-neutral-300 bg-white px-2 text-neutral-900 max-md:text-base dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
-          >
-            {[2, 4, 8, 12].map((value) => (
-              <option key={value} value={value}>
-                {value} px
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <p id={instructions} className="mb-3 text-xs text-neutral-500">
-        {tool === "crop"
-          ? "Drag to select an area, or enter its position and size below."
-          : `Drag to ${tool === "pen" ? "draw freely" : tool === "arrow" ? "point to a detail" : "outline an area"}. Drawings are included when you use the image.`}
-      </p>
-      <canvas
-        ref={canvas}
-        width={size.width}
-        height={size.height}
-        aria-label="Image editing area"
-        tabIndex={0}
-        className="mx-auto block max-h-[55dvh] max-w-full touch-none cursor-crosshair border border-neutral-300 object-contain dark:border-neutral-700"
-        onPointerDown={(event) => {
-          if (busy || activeGesture.current || !event.isPrimary || event.button !== 0) return;
-          event.preventDefault();
-          event.currentTarget.focus({ preventScroll: true });
-          event.currentTarget.setPointerCapture(event.pointerId);
-          const next = { pointerId: event.pointerId, tool, points: [point(event)], color, width };
-          activeGesture.current = next;
-          setGesture(next);
-        }}
-        onPointerMove={move}
-        onPointerUp={(event) => {
-          if (activeGesture.current?.pointerId !== event.pointerId) return;
-          move(event);
-          const held = activeGesture.current!;
-          if (held.tool === "crop")
-            edit({ ...present, crop: imageCrop(held.points[0]!, held.points.at(-1)!, size) });
-          else {
-            const drawing: ImageDrawing = {
-              tool: held.tool,
-              points: held.points,
-              color: held.color,
-              width: held.width,
-            };
-            edit({ ...present, drawings: [...present.drawings, drawing] });
-          }
-          cancelGesture();
-          event.currentTarget.releasePointerCapture(event.pointerId);
-        }}
-        onPointerCancel={cancelGesture}
-        onLostPointerCapture={cancelGesture}
-      />
-      {size.width > 0 && (
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          {(["x", "y", "width", "height"] as const).map((key) => (
-            <label key={key} className="text-xs text-neutral-500">
-              {key}
-              <input
-                aria-label={`Crop ${key}`}
-                type="number"
-                min={key === "x" || key === "y" ? 0 : 1}
-                max={key === "x" || key === "width" ? size.width : size.height}
-                className="ml-2 w-20 border border-neutral-300 bg-transparent px-2 py-1 text-neutral-900 max-md:text-base dark:border-neutral-700 dark:text-neutral-100"
-                disabled={saving}
-                value={(crop ?? { x: 0, y: 0, ...size })[key]}
-                onChange={(event) => {
-                  const next = {
-                    ...(present.crop ?? { x: 0, y: 0, ...size }),
-                    [key]: Math.round(Number(event.target.value)),
-                  };
-                  next.x = Math.max(0, Math.min(size.width - 1, next.x));
-                  next.y = Math.max(0, Math.min(size.height - 1, next.y));
-                  next.width = Math.max(1, Math.min(size.width - next.x, next.width));
-                  next.height = Math.max(1, Math.min(size.height - next.y, next.height));
-                  edit({ ...present, crop: next });
-                }}
-              />
-            </label>
-          ))}
-          <Button
-            type="button"
-            disabled={saving || !present.crop}
-            onClick={() => edit({ ...present, crop: null })}
-          >
-            Use whole image
-          </Button>
+            <Button
+              type="button"
+              disabled={busy || !history.future.length}
+              title="Redo (Ctrl/⌘ Shift Z)"
+              onClick={() => dispatch({ type: "redo" })}
+            >
+              Redo
+            </Button>
+            <Button
+              type="button"
+              disabled={busy || !present.drawings.length}
+              onClick={() => edit({ ...present, drawings: [] })}
+            >
+              Clear drawings
+            </Button>
+          </div>
         </div>
+        <div className="mb-3 flex flex-wrap items-center gap-3 border-y border-neutral-200 py-2 dark:border-neutral-800">
+          <fieldset aria-label="Image tools" className="flex flex-wrap gap-1">
+            {tools.map((item) => (
+              <Button
+                type="button"
+                key={item.id}
+                disabled={busy}
+                variant={tool === item.id ? "primary" : "default"}
+                aria-pressed={tool === item.id}
+                onClick={() => {
+                  cancelGesture();
+                  setTool(item.id);
+                }}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </fieldset>
+          <label className="flex items-center gap-2 text-xs text-neutral-500">
+            Color
+            <input
+              type="color"
+              aria-label="Drawing color"
+              value={color}
+              disabled={busy}
+              onChange={(event) => setColor(event.target.value)}
+              className="h-8 w-9 cursor-pointer border border-neutral-300 bg-transparent p-0.5 dark:border-neutral-700"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-neutral-500">
+            Stroke
+            <select
+              aria-label="Stroke width"
+              value={width}
+              disabled={busy}
+              onChange={(event) => setWidth(Number(event.target.value))}
+              className="h-8 border border-neutral-300 bg-white px-2 text-neutral-900 max-md:text-base dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+            >
+              {[2, 4, 8, 12].map((value) => (
+                <option key={value} value={value}>
+                  {value} px
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p id={instructions} className="mb-3 text-xs text-neutral-500">
+          {tool === "crop"
+            ? "Drag to select an area, or enter its position and size below."
+            : `Drag to ${tool === "pen" ? "draw freely" : tool === "arrow" ? "point to a detail" : "outline an area"}. Drawings are included when you use the image.`}
+        </p>
+        <canvas
+          ref={canvas}
+          width={size.width}
+          height={size.height}
+          aria-label="Image editing area"
+          tabIndex={0}
+          className="mx-auto block max-h-[55dvh] max-w-full touch-none cursor-crosshair border border-neutral-300 object-contain dark:border-neutral-700"
+          onPointerDown={(event) => {
+            if (busy || activeGesture.current || !event.isPrimary || event.button !== 0) return;
+            event.preventDefault();
+            event.currentTarget.focus({ preventScroll: true });
+            event.currentTarget.setPointerCapture(event.pointerId);
+            const next = { pointerId: event.pointerId, tool, points: [point(event)], color, width };
+            activeGesture.current = next;
+            setGesture(next);
+          }}
+          onPointerMove={move}
+          onPointerUp={(event) => {
+            if (activeGesture.current?.pointerId !== event.pointerId) return;
+            move(event);
+            const held = activeGesture.current!;
+            if (held.tool === "crop")
+              edit({ ...present, crop: imageCrop(held.points[0]!, held.points.at(-1)!, size) });
+            else {
+              const drawing: ImageDrawing = {
+                tool: held.tool,
+                points: held.points,
+                color: held.color,
+                width: held.width,
+              };
+              edit({ ...present, drawings: [...present.drawings, drawing] });
+            }
+            cancelGesture();
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }}
+          onPointerCancel={cancelGesture}
+          onLostPointerCapture={cancelGesture}
+        />
+        {size.width > 0 && (
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            {(["x", "y", "width", "height"] as const).map((key) => (
+              <label key={key} className="text-xs text-neutral-500">
+                {key}
+                <input
+                  aria-label={`Crop ${key}`}
+                  type="number"
+                  min={key === "x" || key === "y" ? 0 : 1}
+                  max={key === "x" || key === "width" ? size.width : size.height}
+                  className="ml-2 w-20 border border-neutral-300 bg-transparent px-2 py-1 text-neutral-900 max-md:text-base dark:border-neutral-700 dark:text-neutral-100"
+                  disabled={saving}
+                  value={(crop ?? { x: 0, y: 0, ...size })[key]}
+                  onChange={(event) => {
+                    const next = {
+                      ...(present.crop ?? { x: 0, y: 0, ...size }),
+                      [key]: Math.round(Number(event.target.value)),
+                    };
+                    next.x = Math.max(0, Math.min(size.width - 1, next.x));
+                    next.y = Math.max(0, Math.min(size.height - 1, next.y));
+                    next.width = Math.max(1, Math.min(size.width - next.x, next.width));
+                    next.height = Math.max(1, Math.min(size.height - next.y, next.height));
+                    edit({ ...present, crop: next });
+                  }}
+                />
+              </label>
+            ))}
+            <Button
+              type="button"
+              disabled={saving || !present.crop}
+              onClick={() => edit({ ...present, crop: null })}
+            >
+              Use whole image
+            </Button>
+          </div>
+        )}
+      </div>
+      {optimizing && bitmap.current && size.width > 0 && (
+        <ImageOptimization
+          source={bitmap.current}
+          edit={present}
+          saving={saving}
+          onBack={() => {
+            setError("");
+            setOptimizing(false);
+          }}
+          onUse={(output) => void save(output)}
+        />
       )}
       {error && (
         <p role="alert" className="mt-3 text-sm text-red-600">
@@ -382,9 +406,16 @@ export function ImageEditor({
         <Button type="button" disabled={saving} onClick={onCancel}>
           Cancel
         </Button>
-        <Button variant="primary" disabled={busy || !!gesture} onClick={() => void save()}>
-          {saving ? "Saving…" : "Use image"}
-        </Button>
+        {!optimizing && (
+          <Button type="button" disabled={busy || !!gesture} onClick={() => setOptimizing(true)}>
+            Optimize image
+          </Button>
+        )}
+        {!optimizing && (
+          <Button variant="primary" disabled={busy || !!gesture} onClick={() => void save()}>
+            {saving ? "Saving…" : "Use image"}
+          </Button>
+        )}
       </div>
     </dialog>,
     document.body,

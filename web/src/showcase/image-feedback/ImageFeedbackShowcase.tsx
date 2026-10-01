@@ -2,7 +2,8 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { createPortal, flushSync } from "react-dom";
 import { ATTACHMENT_LIMITS } from "../../../../shared/attachments.ts";
 import { ImageEditor } from "../../components/ImageEditor.tsx";
-import type { ImageCrop } from "../../image-edit.ts";
+import { type ImageCrop, mapImageCrop } from "../../image-edit.ts";
+import { type ImageOutput, normalizeImage } from "../../image-output.ts";
 import {
   type ImageInsertion,
   imageMessageBody,
@@ -30,6 +31,9 @@ type Edit = {
   replace?: number;
   captureVersion?: number;
   previousCrop?: ImageCrop;
+  previousSize?: { width: number; height: number };
+  optimize?: boolean;
+  importing?: { remaining: File[]; insertion: ImageInsertion };
 };
 const blank = (version = 3): Draft => ({ text: "", images: [], version });
 const command = "r3 feedback fetch artifact_example --attachments-dir ./feedback-images";
@@ -97,37 +101,26 @@ export function ImageFeedbackShowcase() {
   const hasDraft = !!draft.text.trim() || draft.images.length > 0;
   const full = draft.images.length >= ATTACHMENT_LIMITS.count;
 
-  const image = useCallback(async (blob: Blob, name: string): Promise<DemoImage> => {
-    const bitmap = await createImageBitmap(blob);
-    try {
-      if (bitmap.width * bitmap.height > ATTACHMENT_LIMITS.pixels)
-        throw new Error("Images must be at most 20 megapixels.");
-      const canvas = document.createElement("canvas");
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
-      const normalized = await new Promise<Blob>((resolve, reject) =>
-        canvas.toBlob(
-          (result) => (result ? resolve(result) : reject(new Error("Unable to prepare image."))),
-          "image/png",
-        ),
-      );
-      if (normalized.size > ATTACHMENT_LIMITS.bytes)
-        throw new Error("The prepared image exceeds 5 MiB. Choose a smaller image.");
-      const url = URL.createObjectURL(normalized);
+  const image = useCallback(
+    async (blob: Blob, name: string, accepted?: ImageOutput): Promise<DemoImage> => {
+      const output = accepted ?? (await normalizeImage(blob));
+      if (output.blob.size > ATTACHMENT_LIMITS.bytes)
+        throw new Error(
+          "The prepared PNG exceeds 5 MiB. Use the optimization preview to crop or resize it.",
+        );
+      const url = URL.createObjectURL(output.blob);
       urls.current.add(url);
       return {
         id: ++serial.current,
-        blob: normalized,
+        blob: output.blob,
         url,
         name,
-        width: bitmap.width,
-        height: bitmap.height,
+        width: output.width,
+        height: output.height,
       };
-    } finally {
-      bitmap.close();
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -176,10 +169,10 @@ export function ImageFeedbackShowcase() {
     textarea.current?.focus({ preventScroll: true });
     textarea.current?.setSelectionRange(result.caret, result.caret);
   }
-  async function attach(files: File[], text = "") {
+  async function attach(files: File[], text = "", at?: ImageInsertion) {
     if (loading.current || recovery) return;
     if (!files.length) return;
-    const insertion = selection(text);
+    const insertion = at ?? selection(text);
     loading.current = true;
     setBusy(true);
     setError("");
@@ -187,11 +180,25 @@ export function ImageFeedbackShowcase() {
       if (files.length + current.current.images.length > ATTACHMENT_LIMITS.count)
         throw new Error("Up to 4 images per message. Remove one before attaching more.");
       const added: DemoImage[] = [];
-      for (const file of files) {
+      for (const [index, file] of files.entries()) {
         if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
           throw new Error("Choose a PNG, JPEG, or WebP image.");
         if (file.size > ATTACHMENT_LIMITS.bytes) throw new Error("Images must be at most 5 MiB.");
-        added.push(await image(file, file.name || "pasted-image.png"));
+        const output = await normalizeImage(file);
+        if (output.blob.size > ATTACHMENT_LIMITS.bytes) {
+          if (added.length) appendImages(added, insertion);
+          setEditing({
+            blob: file,
+            name: file.name || "pasted-image.png",
+            optimize: true,
+            importing: {
+              remaining: files.slice(index + 1),
+              insertion: added.length ? selection() : insertion,
+            },
+          });
+          return;
+        }
+        added.push(await image(file, file.name || "pasted-image.png", output));
       }
       appendImages(added, insertion);
       setNotice("Image attached. Open Edit to crop it or add a drawing.");
@@ -208,17 +215,24 @@ export function ImageFeedbackShowcase() {
     setError("");
     setNotice("Sample attached. You can post an image without writing any text.");
   }
-  async function saveEdit(blob: Blob, crop: ImageCrop) {
+  async function saveEdit(output: ImageOutput, crop: ImageCrop) {
     if (!editing) return;
-    const result = await image(blob, editing.name);
+    const result = await image(output.blob, editing.name, output);
+    if (editing.importing) {
+      const { remaining, insertion } = editing.importing;
+      appendImages([result], insertion);
+      setEditing(null);
+      setNotice("Optimized PNG attached exactly as previewed.");
+      void attach(remaining);
+      return;
+    }
     if (editing.captureVersion !== undefined)
       result.capture = {
         version: editing.captureVersion,
-        crop: {
-          ...crop,
-          x: (editing.previousCrop?.x ?? 0) + crop.x,
-          y: (editing.previousCrop?.y ?? 0) + crop.y,
-        },
+        crop:
+          editing.previousCrop && editing.previousSize
+            ? mapImageCrop(crop, editing.previousSize, editing.previousCrop)
+            : crop,
       };
     setDraft((value) => {
       const images =
@@ -374,6 +388,21 @@ export function ImageFeedbackShowcase() {
                   onClick={addSample}
                 >
                   Attach sample image
+                </button>
+                <button
+                  type="button"
+                  id="optimize-sample"
+                  disabled={!sample || full || !!recovery || busy}
+                  onClick={() =>
+                    sample &&
+                    setEditing({
+                      blob: sample.blob,
+                      name: "optimized-overview.png",
+                      optimize: true,
+                    })
+                  }
+                >
+                  Try optimization
                 </button>
               </div>
               <div className="showcase-preview-bar">
@@ -546,6 +575,7 @@ export function ImageFeedbackShowcase() {
                                   replace: item.id,
                                   captureVersion: item.capture?.version,
                                   previousCrop: item.capture?.crop,
+                                  previousSize: { width: item.width, height: item.height },
                                 })
                               }
                             >
@@ -676,6 +706,8 @@ export function ImageFeedbackShowcase() {
             <h3>One image, all the context.</h3>
             <p>
               Use image flattens your edits into a PNG. Cancel leaves the previous image intact.
+              Optimize image lets you resize, check the actual file size, and inspect the exact
+              output at full size before attaching it.
             </p>
           </div>
         </section>
@@ -827,7 +859,16 @@ export function ImageFeedbackShowcase() {
       </div>
 
       {editing && (
-        <ImageEditor blob={editing.blob} onCancel={() => setEditing(null)} onSave={saveEdit} />
+        <ImageEditor
+          blob={editing.blob}
+          startOptimizing={editing.optimize}
+          onCancel={() => {
+            const remaining = editing.importing?.remaining;
+            setEditing(null);
+            if (remaining) void attach(remaining);
+          }}
+          onSave={saveEdit}
+        />
       )}
       {viewer && (
         <Overlay title={viewer.name} close={() => setViewer(null)}>

@@ -113,7 +113,7 @@ try {
   await page.command("Emulation.clearDeviceMetricsOverride");
   await page.command("Page.navigate", { url: `http://localhost:${app.port}/?version=1` });
   const button = (label: string) =>
-    `Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(label)} || b.getAttribute('aria-label')===${JSON.stringify(label)})`;
+    `Array.from((document.querySelector('dialog[open]') || document).querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(label)} || b.getAttribute('aria-label')===${JSON.stringify(label)})`;
   const input = "document.querySelector('[data-artifact-composer]:not([data-reply-to]) textarea')";
   await eventually(async () => {
     await page.evaluate(`${button("Accept risk and continue")}?.click()`);
@@ -568,6 +568,107 @@ try {
   assert.equal(cancelled.prompts, 1);
   assert.equal(cancelled.retryType, "image/png");
   assert.equal(cancelled.retryStopped, true);
+  // A compact photo can become an oversized lossless PNG. Queue both imports,
+  // cancel one, then accept only the exact resized preview of the other.
+  await page.evaluate("document.querySelector('[aria-label=\"Add general feedback\"]').click()");
+  await eventually(() => page.evaluate(`!!(${input})`), "optimization composer");
+  const photoBytes = await page.evaluate(`(async()=>{
+    const canvas=document.createElement('canvas');canvas.width=1600;canvas.height=1200;
+    const ctx=canvas.getContext('2d');const pixels=ctx.createImageData(1600,1200);let seed=123;
+    for(let i=0;i<pixels.data.length;i+=4){for(let c=0;c<3;c++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;pixels.data[i+c]=seed>>>24;}pixels.data[i+3]=255;}
+    ctx.putImageData(pixels,0,0);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.8));
+    const data=new DataTransfer();for(const name of ['first.jpg','second.jpg'])data.items.add(new File([blob],name,{type:'image/jpeg'}));
+    const files=(${input}).form.querySelector('input[type=file]');files.files=data.files;files.dispatchEvent(new Event('change',{bubbles:true}));return blob.size;
+  })()`);
+  assert(photoBytes < 5 * 1024 * 1024);
+  await eventually(
+    () =>
+      page.evaluate(
+        "document.querySelector('[aria-label=\"Image optimization\"] [role=status]')?.textContent.includes('Above 5 MiB')",
+      ),
+    "oversized normalization opens optimization preview",
+  );
+  assert(await page.evaluate(`${button("Use optimized image")}.disabled`));
+  await page.evaluate(`${button("Cancel")}.click()`);
+  await eventually(
+    () =>
+      page.evaluate(
+        "document.querySelector('[aria-label=\"Image optimization\"] [role=status]')?.textContent.includes('Above 5 MiB')",
+      ),
+    "second queued optimization",
+  );
+  assert.equal(await page.evaluate(`${input}.value.trim()`), "[image1]");
+  await page.evaluate(
+    `(()=>{const slider=document.querySelector('[aria-label="Image size percent"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(slider,'50');slider.dispatchEvent(new Event('input',{bubbles:true}));})()`,
+  );
+  assert(
+    await page.evaluate(`${button("Use optimized image")}.disabled`),
+    "cannot accept a stale preview",
+  );
+  await eventually(
+    () =>
+      page.evaluate(
+        `!${button("Use optimized image")}.disabled && document.querySelector('img[alt="Optimized attachment preview"]')?.naturalWidth === 800`,
+      ),
+    "resized PNG preview ready",
+  );
+  await page.evaluate(`${button("View actual pixels")}.click()`);
+  assert.equal(
+    await page.evaluate(
+      "document.querySelector('img[alt=\"Optimized attachment preview\"]').clientWidth",
+    ),
+    800,
+  );
+  const previewHash = await page.evaluate(`(async()=>{
+    const bytes=await (await fetch(document.querySelector('img[alt="Optimized attachment preview"]').src)).arrayBuffer();
+    const hash=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(hash),x=>x.toString(16).padStart(2,'0')).join('');
+  })()`);
+  await page.command("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  assert(
+    await page.evaluate(
+      "document.querySelector('dialog[open]').scrollWidth <= document.querySelector('dialog[open]').clientWidth",
+    ),
+  );
+  if (process.env.R3_TEST_IMAGE_OUTPUT) {
+    const screenshot = await page.command("Page.captureScreenshot", { format: "png" });
+    await Bun.write(
+      join(process.env.R3_TEST_IMAGE_OUTPUT, "image-optimization-mobile.png"),
+      Buffer.from(screenshot.data, "base64"),
+    );
+  }
+  await page.evaluate(`${button("Use optimized image")}.click()`);
+  await eventually(
+    () => page.evaluate("!document.querySelector('dialog[open]')"),
+    "accepted optimization",
+  );
+  await page.command("Emulation.clearDeviceMetricsOverride");
+  await eventually(
+    () =>
+      page.evaluate("document.querySelector('[data-artifact-composer] img')?.naturalWidth === 800"),
+    "accepted optimization saved in draft",
+  );
+  await page.command("Page.reload");
+  await eventually(
+    () =>
+      page.evaluate("document.querySelector('[data-artifact-composer] img')?.naturalWidth === 800"),
+    "optimized draft survives reload",
+  );
+  await page.evaluate(`${input}.form.requestSubmit()`);
+  await eventually(
+    () => Promise.resolve(storage.conversations.list(artifact.id).length === 3),
+    "optimized feedback posted",
+  );
+  const optimized = storage.conversations.list(artifact.id)[2]!.attachments![0]!;
+  assert.equal(optimized.width, 800);
+  assert.equal(optimized.height, 600);
+  assert.equal(optimized.mediaType, "image/png");
+  assert.equal(optimized.hash, previewHash, "posted bytes match the accepted preview");
   await page.command("Emulation.setDeviceMetricsOverride", {
     width: 390,
     height: 844,
@@ -576,7 +677,7 @@ try {
   });
   assert.equal(await page.evaluate("document.documentElement.scrollWidth <= innerWidth"), true);
   console.log(
-    "Feedback images: paste, reload, retry, reply, real tab capture, crop, drawing, undo/redo, cancellation, flattened pixels, scoped bridge, and narrow layout passed",
+    "Feedback images: paste, reload, retry, reply, real tab capture, crop, drawing, undo/redo, optimization preview, exact saved bytes, cancellation, scoped bridge, and narrow layout passed",
   );
 } finally {
   await browser?.close();

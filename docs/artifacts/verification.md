@@ -234,3 +234,8 @@ The feedback image browser check also covers cursor insertion, spaced image
 placeholders, mixed clipboard text, typing during preparation, file selection,
 renumbering after removal, and reply composers without thread actions. Pure
 placeholder and prompt tests keep labels aligned across notes, edits, and replies.
+The same browser check covers oversized normalization, queued optimization and
+cancellation, resize preview invalidation, actual-pixel inspection, phone layout
+changes, reload, and equality between accepted preview and posted bytes.
+`web/src/image-edit.test.ts` covers crop evidence after resizing, and draft-image
+tests reject saving an optimization after its storage generation is revoked.

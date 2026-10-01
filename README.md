@@ -66,8 +66,11 @@ Paste or attach images to notes and replies, including messages without text.
 For HTML artifacts, the **Capture area** camera icon beside Comment mode in the
 navbar shares the current tab, freezes the preview,
 and lets you crop a screenshot before attaching it. **Edit image** adds pen, arrow,
-and rectangle drawings with color, stroke width, and undo/redo controls. Where browser capture is
-unavailable, the icon is hidden; paste or upload a screenshot instead.
+and rectangle drawings with color, stroke width, and undo/redo controls.
+**Optimize image** also offers PNG resizing with the exact output preview,
+dimensions, file size, and an actual-pixels view before you accept it. Oversized
+PNG conversions open this preview automatically; no resizing happens without acceptance.
+Where browser capture is unavailable, the icon is hidden; paste or upload a screenshot instead.
 Attaching an image inserts a spaced `[image1]` reference in the message; pasting
 places it at the cursor. Labels match the thumbnails and agent output and
 renumber when an earlier image is removed. Messages accept up to four images,

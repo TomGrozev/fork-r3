@@ -1,5 +1,21 @@
 import { expect, test } from "bun:test";
-import { DraftImageStore } from "./attachment-drafts.ts";
+import { DraftImageStore, draftImages, saveDraftImageOutput } from "./attachment-drafts.ts";
+
+test("accepted optimization stores the exact preview bytes and rejects stale consent", async () => {
+  const output = {
+    blob: new Blob(["encoded preview"], { type: "image/png" }),
+    width: 100,
+    height: 60,
+  };
+  const ticket = await draftImages.epoch();
+  const saved = await saveDraftImageOutput("artifact_output", output, undefined, ticket);
+  expect(await (await draftImages.get(saved.attachment.id)).text()).toBe("encoded preview");
+  expect(saved.attachment.width).toBe(100);
+  await draftImages.clear("artifact_output");
+  await expect(saveDraftImageOutput("artifact_output", output, undefined, ticket)).rejects.toThrow(
+    "cancelled",
+  );
+});
 
 // Bun has no IndexedDB; these exercise the explicit memory fallback and its
 // revocation behavior. Browser acceptance covers persistent image drafts.

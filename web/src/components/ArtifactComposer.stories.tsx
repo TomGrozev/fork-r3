@@ -50,7 +50,7 @@ export const FailedImage: Story = {
           byteLength: 0,
           width: 0,
           height: 0,
-          error: "The prepared image exceeds 5 MiB. Resize it outside r3 and attach it again.",
+          error: "Image preparation was interrupted. Remove it and attach it again.",
         },
       ],
     });

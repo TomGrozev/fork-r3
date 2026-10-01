@@ -3,6 +3,7 @@ import {
   type AttachmentCapture,
   type AttachmentInput,
 } from "../../shared/attachments.ts";
+import { type ImageOutput, normalizeImage } from "./image-output.ts";
 
 export interface DraftAttachment {
   id: string;
@@ -14,7 +15,7 @@ export interface DraftAttachment {
   pending?: boolean;
   error?: string;
 }
-type ImageEpoch = { generation: number; epoch: number | null };
+export type ImageEpoch = { generation: number; epoch: number | null };
 interface ImageRecord {
   id: string;
   artifactId: string;
@@ -221,48 +222,51 @@ export class DraftImageStore {
 }
 export const draftImages = new DraftImageStore();
 
+export class ImageOptimizationRequired extends Error {
+  constructor(readonly ticket: ImageEpoch) {
+    super("The prepared PNG exceeds 5 MiB. Crop or resize it in the optimization preview.");
+  }
+}
+
+// Only normalized/editor output reaches this path. Keep the accepted preview's
+// exact bytes instead of encoding them a second time before saving.
+export async function saveDraftImageOutput(
+  artifactId: string,
+  output: ImageOutput,
+  capture?: AttachmentCapture,
+  ticket?: ImageEpoch,
+) {
+  if (
+    output.blob.type !== "image/png" ||
+    output.blob.size > ATTACHMENT_LIMITS.bytes ||
+    output.width < 1 ||
+    output.height < 1 ||
+    output.width * output.height > ATTACHMENT_LIMITS.pixels
+  )
+    throw new Error("Choose a PNG output of at most 5 MiB and 20 megapixels");
+  const saved = await draftImages.put(artifactId, output.blob, undefined, ticket);
+  return {
+    attachment: {
+      id: saved.id,
+      width: output.width,
+      height: output.height,
+      byteLength: output.blob.size,
+      mediaType: "image/png",
+      ...(capture ? { capture } : {}),
+    } satisfies DraftAttachment,
+    persisted: saved.persisted,
+  };
+}
+
 export async function prepareDraftImage(
   artifactId: string,
   file: Blob,
   capture?: AttachmentCapture,
 ) {
-  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
-    throw new Error("Choose a PNG, JPEG, or WebP image");
-  if (file.size > ATTACHMENT_LIMITS.bytes) throw new Error("Images must be at most 5 MiB");
   const epoch = await draftImages.epoch();
-  const bitmap = await createImageBitmap(file);
-  try {
-    if (bitmap.width * bitmap.height > ATTACHMENT_LIMITS.pixels)
-      throw new Error("Images must be at most 20 megapixels");
-    const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
-    const blob = await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error("Unable to prepare image"))),
-        "image/png",
-      ),
-    );
-    if (blob.size > ATTACHMENT_LIMITS.bytes)
-      throw new Error(
-        "The prepared image exceeds 5 MiB. Resize it outside r3 and attach it again.",
-      );
-    const saved = await draftImages.put(artifactId, blob, undefined, epoch);
-    return {
-      attachment: {
-        id: saved.id,
-        width: bitmap.width,
-        height: bitmap.height,
-        byteLength: blob.size,
-        mediaType: "image/png",
-        ...(capture ? { capture } : {}),
-      } satisfies DraftAttachment,
-      persisted: saved.persisted,
-    };
-  } finally {
-    bitmap.close();
-  }
+  const output = await normalizeImage(file);
+  if (output.blob.size > ATTACHMENT_LIMITS.bytes) throw new ImageOptimizationRequired(epoch);
+  return saveDraftImageOutput(artifactId, output, capture, epoch);
 }
 
 export async function draftAttachmentInputs(

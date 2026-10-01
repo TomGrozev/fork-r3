@@ -2,7 +2,7 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 import type { ArtifactDocumentTarget } from "../../../shared/artifacts.ts";
 import { ATTACHMENT_LIMITS } from "../../../shared/attachments.ts";
 import { artifactDrafts } from "../artifact-drafts.ts";
-import { prepareDraftImage } from "../attachment-drafts.ts";
+import { saveDraftImageOutput } from "../attachment-drafts.ts";
 import { imageMessageBody } from "../image-placeholders.ts";
 import { canCapturePreview, capturePreview } from "../screenshot.ts";
 import { Button, StrokeIcon } from "../ui.tsx";
@@ -146,13 +146,13 @@ export function PreviewScreenshot({
             generation.current++;
             setSnapshot(null);
           }}
-          onSave={async (blob, crop) => {
+          onSave={async (output, crop) => {
             const started = generation.current;
             if (
               (artifactDrafts.get(artifactId)?.attachments?.length ?? 0) >= ATTACHMENT_LIMITS.count
             )
               throw new Error("The draft already contains four images");
-            const { attachment, persisted } = await prepareDraftImage(artifactId, blob, {
+            const { attachment, persisted } = await saveDraftImageOutput(artifactId, output, {
               versionSeq,
               path,
               ...(route ? { route } : {}),

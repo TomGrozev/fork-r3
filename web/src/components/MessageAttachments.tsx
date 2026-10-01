@@ -11,12 +11,16 @@ import {
   type DraftAttachment,
   draftAttachmentInputs,
   draftImages,
+  ImageOptimizationRequired,
   prepareDraftImage,
+  saveDraftImageOutput,
 } from "../attachment-drafts.ts";
+import { mapImageCrop } from "../image-edit.ts";
 import { type ImageInsertion, insertImagePlaceholders } from "../image-placeholders.ts";
 import { suspendKeys } from "../keys.ts";
 import { Button, PaperclipIcon, PencilIcon, TrashIcon } from "../ui.tsx";
 import { ImageEditor } from "./ImageEditor.tsx";
+import { useImagePreparation } from "./ImagePreparation.tsx";
 
 export type EditableImage = (DraftAttachment | ArtifactAttachment) & {
   pending?: boolean;
@@ -235,18 +239,18 @@ export function MessageAttachments({
             setOpened(null);
             setEditing(false);
           }}
-          onSave={async (blob, crop) => {
+          onSave={async (output, crop) => {
             const capture = opened.image.capture
               ? {
                   ...opened.image.capture,
-                  crop: {
-                    ...crop,
-                    x: opened.image.capture.crop.x + crop.x,
-                    y: opened.image.capture.crop.y + crop.y,
-                  },
+                  crop: mapImageCrop(crop, opened.image, opened.image.capture.crop),
                 }
               : undefined;
-            const { attachment, persisted } = await prepareDraftImage(artifactId, blob, capture);
+            const { attachment, persisted } = await saveDraftImageOutput(
+              artifactId,
+              output,
+              capture,
+            );
             onChange((items) =>
               items.map((item) => (item.id === opened.image.id ? attachment : item)),
             );
@@ -271,6 +275,7 @@ export function useAttachmentInput(
   const current = useRef({ images, onChange, disabled });
   current.current = { images, onChange, disabled };
   const [notice, setNotice] = useState("");
+  const optimize = useImagePreparation();
   const input = useRef<HTMLInputElement>(null);
   const add = async (files: Blob[], text = "") => {
     if (!files.length) return;
@@ -329,13 +334,35 @@ export function useAttachmentInput(
         if (!persisted)
           setNotice("Image is available in this tab, but could not be saved for reload.");
       } catch (error) {
+        let failure = error;
+        if (error instanceof ImageOptimizationRequired && optimize) {
+          const output = await optimize(file);
+          if (!output) {
+            change((items) => items.filter((item) => item.id !== id));
+            continue;
+          }
+          try {
+            const { attachment, persisted } = await saveDraftImageOutput(
+              artifactId,
+              output,
+              undefined,
+              error.ticket,
+            );
+            change((items) => items.map((item) => (item.id === id ? attachment : item)));
+            if (!persisted)
+              setNotice("Image is available in this tab, but could not be saved for reload.");
+            continue;
+          } catch (cause) {
+            failure = cause;
+          }
+        }
         change((items) =>
           items.map((item) =>
             item.id === id
               ? {
                   ...item,
                   pending: false,
-                  error: error instanceof Error ? error.message : "Unable to prepare image",
+                  error: failure instanceof Error ? failure.message : "Unable to prepare image",
                 }
               : item,
           ),

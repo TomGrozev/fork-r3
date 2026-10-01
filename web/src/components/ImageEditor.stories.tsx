@@ -30,3 +30,9 @@ export const DrawingTools: Story = {
   },
 };
 export const DrawingToolsDark: Story = { ...DrawingTools, globals: { theme: "dark" } };
+export const Optimization: Story = { ...Crop, args: { ...Crop.args, startOptimizing: true } };
+export const OptimizationDark: Story = { ...Optimization, globals: { theme: "dark" } };
+export const OptimizationMobile: Story = {
+  ...Optimization,
+  globals: { viewport: { value: "mobile1" } },
+};

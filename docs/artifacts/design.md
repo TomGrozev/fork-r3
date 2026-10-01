@@ -709,6 +709,13 @@ not a selector, source location, or claim of reproducible dynamic page state.
 
 The composer accepts user-initiated paste and image file selection. Browser inputs
 are normalized to static PNG; WebP input is also accepted by that normalization.
+If an input within the existing byte/pixel limits expands beyond 5 MiB during
+normalization, the workspace opens an optimization preview. The original input
+stays transient while the user crops or chooses a smaller PNG size. Pending
+optimizations survive desktop/phone layout changes, queue for multiple imports,
+and cancel on workspace exit or image-data revocation. Cancel removes only that
+pending image and its placeholder. Reload before acceptance retains interrupted
+draft evidence and asks for reattachment; raw source bytes are never persisted.
 Thumbnails have Edit image and Remove controls; posted images open in a modal viewer.
 Each addition inserts a message-local `[image1]`, `[image2]`, etc. placeholder with
 spaces around it. Paste inserts at the cursor and preserves accompanying plain
@@ -757,3 +764,11 @@ in the saved pixels. Cancel leaves the draft's original image intact. Editing a
 posted image creates a replacement attachment on message save; its earlier bytes
 remain immutable. Drawing operations are local to the open editor, not persisted
 as an editable document or sent through the preview bridge.
+
+Optimize image offers 1–100% sizing, actual PNG dimensions and byte size, and
+fit/actual-pixel preview. It is available in the editor and opens automatically
+when edited output exceeds 5 MiB. Changing size invalidates the previous preview;
+only the current, in-limit output can be accepted. The exact preview bytes are
+saved without another encode. PNG and transparency remain the output policy;
+JPEG output and lossy compression are deferred. Resized captures retain crop
+evidence in the original captured pixel coordinates, including subsequent crops.
