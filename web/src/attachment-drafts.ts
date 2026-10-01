@@ -245,7 +245,9 @@ export async function prepareDraftImage(
       ),
     );
     if (blob.size > ATTACHMENT_LIMITS.bytes)
-      throw new Error("The prepared image exceeds 5 MiB. Crop it or choose a smaller image.");
+      throw new Error(
+        "The prepared image exceeds 5 MiB. Resize it outside r3 and attach it again.",
+      );
     const saved = await draftImages.put(artifactId, blob, undefined, epoch);
     return {
       attachment: {

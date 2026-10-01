@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { link, mkdir, open, unlink } from "node:fs/promises";
+import { type FileHandle, link, mkdir, open, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ArtifactClient } from "../shared/artifact-client.ts";
 import {
@@ -10,6 +10,30 @@ import {
   attachmentPath,
 } from "../shared/attachments.ts";
 import { ArtifactCommandError } from "./artifact-args.ts";
+
+// Open without waiting for a pipe writer, then validate the opened descriptor.
+// Bound reads even when a regular file grows after its initial size check.
+const readFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+async function readStableImage(file: FileHandle): Promise<Buffer> {
+  const before = await file.stat();
+  if (!before.isFile() || before.size > ATTACHMENT_LIMITS.bytes) throw new Error();
+  const bytes = Buffer.alloc(before.size + 1);
+  let size = 0;
+  while (size < bytes.length) {
+    const result = await file.read(bytes, size, bytes.length - size, null);
+    if (!result.bytesRead) break;
+    size += result.bytesRead;
+  }
+  const after = await file.stat();
+  if (
+    size !== before.size ||
+    after.size !== before.size ||
+    after.mtimeMs !== before.mtimeMs ||
+    after.ctimeMs !== before.ctimeMs
+  )
+    throw new Error();
+  return bytes.subarray(0, size);
+}
 
 export async function readAttachmentFiles(
   paths: string[],
@@ -21,28 +45,12 @@ export async function readAttachmentFiles(
   for (const path of paths) {
     let file: Awaited<ReturnType<typeof open>> | undefined;
     try {
-      file = await open(resolve(cwd, path), constants.O_RDONLY | constants.O_NOFOLLOW);
-      const info = await file.stat();
-      if (!info.isFile() || info.size > ATTACHMENT_LIMITS.bytes) throw new Error();
-      const bytes = Buffer.alloc(ATTACHMENT_LIMITS.bytes + 1);
-      let size = 0;
-      while (size < bytes.length) {
-        const result = await file.read(bytes, size, bytes.length - size, null);
-        if (!result.bytesRead) break;
-        size += result.bytesRead;
-      }
-      const after = await file.stat();
-      if (
-        size !== info.size ||
-        size > ATTACHMENT_LIMITS.bytes ||
-        after.mtimeMs !== info.mtimeMs ||
-        after.ctimeMs !== info.ctimeMs
-      )
-        throw new Error();
+      file = await open(resolve(cwd, path), readFlags);
+      const bytes = await readStableImage(file);
       const mediaType =
         bytes[0] === 137 ? "image/png" : bytes[0] === 255 && bytes[1] === 216 ? "image/jpeg" : null;
       if (!mediaType) throw new Error();
-      images.push({ mediaType, base64: bytes.subarray(0, size).toString("base64") });
+      images.push({ mediaType, base64: bytes.toString("base64") });
     } catch {
       throw new ArtifactCommandError(
         "Unable to read an attachment: choose a regular PNG/JPEG file of at most 5 MiB that is not changing",
@@ -116,16 +124,15 @@ export async function downloadFeedbackImages(
       createHash("sha256").update(bytes).digest("hex") === image.hash;
     let existing: Uint8Array | undefined;
     // A retry can reuse exactly the immutable bytes it already saved.
-    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW).catch((error) => {
+    const handle = await open(path, readFlags).catch((error) => {
       if (error.code === "ENOENT") return undefined;
       throw new Error("Attachment output cannot be read safely");
     });
     if (handle) {
       try {
-        const info = await handle.stat();
-        if (!info.isFile() || info.size !== image.byteLength || info.size > ATTACHMENT_LIMITS.bytes)
+        existing = await readStableImage(handle).catch(() => {
           throw new Error("Attachment output differs from the snapshot");
-        existing = await handle.readFile();
+        });
       } finally {
         await handle.close();
       }

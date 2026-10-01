@@ -169,7 +169,7 @@ export function MessageAttachments({
                   className="size-7 shrink-0 justify-center p-0! max-md:size-9"
                   aria-label="Edit image"
                   title="Edit image"
-                  disabled={disabled || image.pending}
+                  disabled={disabled || image.pending || !!image.error}
                   onClick={() => {
                     void imageBlob(image)
                       .then((blob) => {

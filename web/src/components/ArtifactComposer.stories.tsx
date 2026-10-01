@@ -38,6 +38,26 @@ export const ImageOnly: Story = {
   ],
 };
 export const ImageOnlyDark: Story = { ...ImageOnly, globals: { theme: "dark" } };
+export const FailedImage: Story = {
+  args: { artifactId: "artifact_failed_image_composer" },
+  beforeEach: () => {
+    artifactDrafts.update("artifact_failed_image_composer", {
+      body: " [image1] ",
+      attachments: [
+        {
+          id: "failed-image",
+          mediaType: "image/png",
+          byteLength: 0,
+          width: 0,
+          height: 0,
+          error: "The prepared image exceeds 5 MiB. Resize it outside r3 and attach it again.",
+        },
+      ],
+    });
+    return () => artifactDrafts.clear("artifact_failed_image_composer");
+  },
+};
+export const FailedImageDark: Story = { ...FailedImage, globals: { theme: "dark" } };
 export const ImageOnlyNarrow: Story = {
   ...ImageOnly,
   decorators: [

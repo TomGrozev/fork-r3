@@ -211,7 +211,9 @@ immutable byte retrieval, shared-blob GC, atomic failures, scoped membership,
 retry keys, stale acknowledgment rejection, version-6 upgrade, and malformed input.
 CLI and draft-store tests cover download-before-acknowledgment, failed output paths,
 image-only drafts, and retained native targets. `ImageEditor` and `ArtifactComposer`
-stories cover crop/drawing controls and image drafts in both themes.
+stories cover crop/drawing controls and image drafts, including failed preparation,
+in both themes. `bun test cli/attachment-files.test.ts` checks that upload and
+download reuse reject named pipes immediately without waiting for a writer.
 
 `R3_TEST_BROWSER=<chromium> bun scripts/test-feedback-images.ts` uses isolated
 storage and a fresh browser profile. It covers paste, reload, failed posting/retry,
