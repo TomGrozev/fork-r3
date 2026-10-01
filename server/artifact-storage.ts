@@ -147,7 +147,13 @@ export async function openArtifactStorage(
       lifecycle: new ArtifactLifecycle(db, artifacts, clock, listeners),
       migration,
       collectBlobs,
-      close: () => db.close(),
+      close() {
+        try {
+          authentication.flushLastUsed();
+        } finally {
+          db.close();
+        }
+      },
     };
   } catch (error) {
     db.close();

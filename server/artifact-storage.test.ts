@@ -42,6 +42,24 @@ const publication = () => ({
 });
 
 describe("private artifact storage bootstrap", () => {
+  test("graceful close saves deferred cookie use before restart applies inactivity expiry", async () => {
+    let currentTime = time;
+    const settings = { ...options(), clock: () => currentTime };
+    storage = await openArtifactStorage(settings);
+    const issued = storage.authentication.createLoginToken(null);
+    const session = storage.authentication.mintSession(issued.info.id);
+    currentTime = "2026-09-14T23:59:59.999Z";
+    expect(storage.authentication.sessionValid(session.cookieValue)).toBe(true);
+    storage.close();
+    storage = null;
+    currentTime = "2026-09-15T00:00:00.000Z";
+    storage = await openArtifactStorage(settings);
+    expect(storage.authentication.listTokens()).toEqual([
+      { ...issued.info, lastUsedAt: "2026-09-14T23:59:59.999Z" },
+    ]);
+    expect(storage.authentication.sessionValid(session.cookieValue)).toBe(true);
+  });
+
   test("restart purges revoked and overdue tokens while preserving recent sessions and last use", async () => {
     let currentTime = time;
     const settings = { ...options(), clock: () => currentTime, authTokenIdleDays: 2 };

@@ -62,8 +62,11 @@ Every version reference includes artifact identity. A sequence such as 2 is mean
 | auth_tokens / auth_sessions | id | Existing authentication records and hashed secret values; independent of artifact content |
 
 Authentication retains `last_used_at` for successful logins and cookie requests.
-Automatic inactivity expiry sets `revoked_at` and leaves rows intact until storage
-startup removes revoked tokens and their sessions. The
+Cookie-use writes are coalesced per token and flushed each minute and on graceful
+storage close; listings include pending activity.
+Inactivity expiry is calculated from the effective last-use timestamp and leaves
+rows intact until storage startup removes inactive tokens and their sessions.
+`revoked_at` records manual revocation. The
 [security model](../../.claude/skills/security-model/SKILL.md#browser-login-and-configuration)
 owns inactivity configuration and validation.
 

@@ -120,11 +120,10 @@ Use the generated login token to sign in. Browser sessions and login tokens are
 revocable. r3 is a single-owner tool: a valid login grants access to all artifacts
 on that instance, with no per-artifact sharing permissions.
 
-Login tokens automatically revoke after 14 days without a successful login or
-cookie-authenticated request. Never-used tokens age from creation. Expiry
-invalidates their browser sessions; revoked token rows and their sessions are
-removed on server startup. To change the inactivity period (a positive whole
-number of days):
+Login tokens expire after 14 days without a successful login or cookie-authenticated
+request. Never-used tokens age from creation. Expiry invalidates their browser
+sessions; inactive or revoked token rows and their sessions are removed on server
+startup. To change the inactivity period (a positive whole number of days):
 
 ```sh
 r3 config set authTokenIdleDays 30
@@ -132,7 +131,8 @@ r3 restart
 ```
 
 `R3_AUTH_TOKEN_IDLE_DAYS` overrides this setting. `r3 auth list-tokens --json`
-includes each active token's `lastUsedAt` timestamp.
+includes each active token's `lastUsedAt` timestamp. Cookie activity is saved in
+batches once a minute and on graceful shutdown.
 
 Your agent can publish from a different machine: it uploads the artifact's files,
 so the machine running r3 does not need a copy of your project.

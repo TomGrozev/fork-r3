@@ -82,7 +82,9 @@ previewPort, previewBaseUrl,
 projectGrouping (remote|manual), projectMappings (JSON remote-URL to project-ID map).
 Login tokens expire after authTokenIdleDays of inactivity (default 14, positive
 integer). Successful login or cookie authentication refreshes last use; unused
-tokens age from creation. Expiry is a soft revocation; startup removes revoked rows.
+tokens age from creation. Inactivity is calculated when authenticating; startup
+removes inactive or revoked rows.
+Cookie-use timestamps are saved once per minute and at graceful shutdown.
 Environment overrides: R3_AUTH_TOKEN_IDLE_DAYS, R3_PREVIEW_PORT,
 R3_PREVIEW_BASE_URL, R3_PROJECT_GROUPING.
 Project settings take effect on the server after restart. An explicit project wins

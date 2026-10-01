@@ -47,15 +47,23 @@ its transport URL uses the application address.
 Importing it opens no database. Revocation and session deletion are transactional;
 migration preserves their existing records. A token is shown only when minted.
 
-Login tokens soft-revoke after `authTokenIdleDays` of inactivity (14 days by
+Login tokens expire after `authTokenIdleDays` of inactivity (14 days by
 default; a positive integer). `R3_AUTH_TOKEN_IDLE_DAYS` overrides persisted config.
-Successful login and cookie authentication update `last_used_at`; never-used
-tokens age from `created_at`. Authentication checks expire overdue tokens before
-recording use, so expired credentials cannot revive themselves. A once-per-minute
-sweep also soft-revokes idle tokens. Their sessions immediately fail the token
-revocation check. Automatic cleanup retains token/session rows during the run;
-storage startup expires overdue tokens and deletes revoked tokens, their sessions,
-and expired sessions. Manual revocation retains its transactional session deletion.
+Successful login persists `last_used_at` immediately. Cookie authentication keeps
+the latest use per token in memory; the once-per-minute sweep saves pending uses
+in one transaction. Graceful storage close flushes pending uses too; an unexpected
+termination can lose up to one minute of activity.
+Authentication and token listings use pending timestamps, and each cookie request
+still checks persisted session expiry and token revocation. Regular browsing reads
+authentication state without writing SQLite. Never-used tokens age from
+`created_at`. A token is valid only while its effective last-use time plus the
+configured window is later than the current time. Check before recording use,
+so overdue credentials cannot refresh themselves. Inactivity checks and listings
+do not write an expiry marker; `revoked_at` records manual revocation only.
+Automatic cleanup retains token/session rows during the run. Storage startup
+deletes inactive or manually revoked tokens, their sessions, and expired sessions.
+Manual revocation retains its transactional session deletion, including inactive
+tokens when revoking all.
 The separate master API token is outside this login-token policy.
 
 `REQUIRE_LOGIN` defaults on when publicUrl, allowedHosts, or bind config indicates

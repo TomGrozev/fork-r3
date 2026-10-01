@@ -196,7 +196,11 @@ export function installArtifactConversations(
   const expiry = setInterval(() => {
     for (const artifactId of conversations.expireClaims())
       collaboration.broadcast({ type: "presence-changed", artifactId });
-    storage.authentication.expireTokens();
+    try {
+      storage.authentication.flushLastUsed();
+    } catch {
+      console.error("r3: authentication housekeeping failed");
+    }
   }, 60_000);
   expiry.unref();
   return {
