@@ -4,6 +4,43 @@ All notable changes to r3 are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-10-01
+
+### Added
+
+- **Attach image in the feedback and replies.** Show what needs to change with
+  screenshots or pasted images. Crop, annotate, and preview them before sending
+  to make feedback easier to understand.
+
+### Changed
+
+- **Unused login tokens expire automatically.** Tokens and their browser sessions
+  are revoked after 14 days without a successful login or authenticated browser
+  request. Configure the period with `authTokenIdleDays` or
+  `R3_AUTH_TOKEN_IDLE_DAYS`.
+- **Feedback controls stay close to the conversation.** The navbar handoff action
+  appears when the feedback panel is hidden; the open panel provides its own
+  action. Image edit and remove controls use compact icons.
+
+### Fixed
+
+- **Drafts stay in sync across tabs.** Notes and replies no longer overwrite
+  unrelated drafts in another tab, and a completed save preserves newer edits.
+- **File links land on the right heading.** Links between rendered Markdown files
+  open the destination and scroll to its heading, including folded files and
+  phone layouts.
+- **Git captures preserve the intended changes.** Custom Git prefixes no longer
+  break captured paths, submodule pointer changes are included, and invalid text
+  is rejected instead of silently altered.
+- **Remote feedback delivery reports its real state.** Queued notifications keep
+  their delivery status, and timeouts begin when each notification is sent.
+- **Workspace updates are more reliable.** Open artifacts reflect project renames
+  and deletion, and display controls remain usable when browser storage is blocked
+  or full.
+- **Invalid inputs fail cleanly.** Invalid Markdown is rejected before an empty
+  artifact is created. Image file reads reject non-files and remain bounded if a
+  file grows, while interrupted image drafts explain how to recover.
+
 ## [1.1.0] - 2026-09-26
 
 ### Changed
@@ -506,6 +543,7 @@ and files reviews, anchored feedback with quote-first re-anchoring, replies,
 diff rounds, content snapshots, the watch/submit agent loop, and the
 GitHub/npm release pipeline.
 
+[1.2.0]: https://github.com/hyperlogue/r3/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/hyperlogue/r3/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/hyperlogue/r3/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/hyperlogue/r3/compare/v0.13.0...v1.0.0
