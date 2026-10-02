@@ -43,10 +43,10 @@ try {
     "notification fixture",
   );
   await page.evaluate(
-    "document.getElementById('success').click();document.getElementById('failure').click()",
+    "document.getElementById('success').click();document.getElementById('warning').click();document.getElementById('failure').click()",
   );
   await eventually(
-    () => page.evaluate("document.querySelectorAll('.r3-notification').length === 2"),
+    () => page.evaluate("document.querySelectorAll('.r3-notification').length === 3"),
     "simultaneous notices without Strict Mode duplicates",
   );
   for (const width of [1440, 820, 390]) {
@@ -58,7 +58,7 @@ try {
     });
     const fit = await page.evaluate(`(() => {
       const cards = [...document.querySelectorAll('.r3-notification')].map(el => el.getBoundingClientRect());
-      return cards.every(r => r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight) && cards[0].bottom <= cards[1].top;
+      return cards.every((r, i) => r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && (i === 0 || cards[i - 1].bottom <= r.top));
     })()`);
     assert.equal(fit, true, "Notices stack in the viewport outside the clipped, inert source");
   }
@@ -76,6 +76,11 @@ try {
     true,
     "Errors remain visible",
   );
+  assert.equal(
+    await page.evaluate("!!document.querySelector('[data-notification-tone=warning]')"),
+    true,
+    "Warnings remain visible beyond the success timeout",
+  );
   await page.evaluate(
     "document.querySelector('[aria-label=\"Copy fetch command\"]').focus();Object.defineProperty(navigator, 'clipboard', {configurable:true,value:{writeText:async()=>{throw new Error('Clipboard denied')}}});document.execCommand=()=>false;document.querySelector('[aria-label=\"Copy fetch command\"]').click()",
   );
@@ -91,6 +96,11 @@ try {
     await page.evaluate("!!document.querySelector('[data-notification-tone=error]')"),
     true,
   );
+  assert.equal(
+    await page.evaluate("!!document.querySelector('[data-notification-tone=warning]')"),
+    true,
+    "Success dismissal leaves warnings visible",
+  );
   await page.evaluate("document.documentElement.dataset.r3Screenshot='true'");
   assert.equal(
     await page.evaluate(
@@ -103,8 +113,27 @@ try {
     "delete document.documentElement.dataset.r3Screenshot;document.querySelector('[aria-label=\"Dismiss Agent notification failed\"]').click()",
   );
   await eventually(
-    () => page.evaluate("document.querySelectorAll('.r3-notification').length === 0"),
+    () => page.evaluate("!document.querySelector('[data-notification-tone=error]')"),
     "error dismissal",
+  );
+  assert.equal(
+    await page.evaluate("!!document.querySelector('[data-notification-tone=warning]')"),
+    true,
+    "Dismissing an error leaves the warning until its own dismissal",
+  );
+  await page.evaluate("document.querySelector('[aria-label=\"Dismiss Review notice\"]').click()");
+  await eventually(
+    () => page.evaluate("document.querySelectorAll('.r3-notification').length === 0"),
+    "warning dismissal",
+  );
+  await page.evaluate("document.getElementById('success').click()");
+  await eventually(
+    () => page.evaluate("!!document.querySelector('[data-notification-tone=success]')"),
+    "unfocused success appears",
+  );
+  await eventually(
+    () => page.evaluate("!document.querySelector('[data-notification-tone=success]')"),
+    "success disappears without a dismiss gesture",
   );
   await page.evaluate("document.getElementById('failure').click()");
   await eventually(
@@ -117,7 +146,7 @@ try {
     "navigation removes originating notices",
   );
   console.log(
-    "Notification acceptance passed: stacking, clipping, mobile fit, focus timing, persistent errors, clipboard denial, capture exclusion, dismissal, and navigation cleanup.",
+    "Notification acceptance passed: stacking, clipping, mobile fit, automatic success dismissal, focus timing, persistent warnings and errors, clipboard denial, capture exclusion, independent dismissal, and navigation cleanup.",
   );
 } finally {
   await browser.close();
