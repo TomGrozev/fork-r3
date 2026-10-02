@@ -143,8 +143,15 @@ try {
   );
   assert.equal(
     await page.evaluate(`(${navButton}).textContent`),
-    "Queued",
-    "Codex queue acceptance should show Queued without claiming a live consumer",
+    "Sent",
+    "Codex queue acceptance uses the same notification confirmation as other adapters",
+  );
+  await eventually(
+    () =>
+      page.evaluate(
+        "document.querySelector('[data-notification-tone=success]')?.textContent.includes('Agent notified')",
+      ),
+    "queued delivery gets the shared corner confirmation",
   );
   assert.equal(await page.evaluate(`(${button}).disabled`), true);
   assert.equal(

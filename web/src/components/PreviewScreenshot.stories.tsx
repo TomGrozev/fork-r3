@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { createRef } from "react";
-import { expect, fn, within } from "storybook/test";
+import { createRef, useRef } from "react";
+import { expect, fn, userEvent, within } from "storybook/test";
 import { PreviewScreenshot } from "./PreviewScreenshot.tsx";
 
 const meta = {
@@ -32,3 +32,52 @@ export const Unavailable: Story = {
   },
 };
 export const UnavailableDark: Story = { ...Unavailable, globals: { theme: "dark" } };
+export const CaptureCancelled: Story = {
+  beforeEach: () => {
+    const crop = Object.getOwnPropertyDescriptor(window, "CropTarget");
+    const image = Object.getOwnPropertyDescriptor(window, "ImageCapture");
+    const display = Object.getOwnPropertyDescriptor(navigator.mediaDevices, "getDisplayMedia");
+    Object.defineProperty(window, "CropTarget", {
+      configurable: true,
+      value: { fromElement: async () => ({}) },
+    });
+    Object.defineProperty(window, "ImageCapture", { configurable: true, value: class {} });
+    Object.defineProperty(navigator.mediaDevices, "getDisplayMedia", {
+      configurable: true,
+      value: async () => {
+        throw new DOMException("Sharing denied", "NotAllowedError");
+      },
+    });
+    return () => {
+      for (const [object, key, descriptor] of [
+        [window, "CropTarget", crop],
+        [window, "ImageCapture", image],
+        [navigator.mediaDevices, "getDisplayMedia", display],
+      ] as const) {
+        if (descriptor) Object.defineProperty(object, key, descriptor);
+        else Reflect.deleteProperty(object, key);
+      }
+    };
+  },
+  render: (args) => {
+    const frame = useRef<HTMLIFrameElement>(null);
+    return (
+      <>
+        <PreviewScreenshot {...args} frame={frame} />
+        <iframe ref={frame} title="Sample preview" srcDoc="<p>Sample content</p>" />
+      </>
+    );
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Capture area" }));
+    await expect(
+      await within(document.body).findByText(
+        "Capture cancelled. You can paste a screenshot instead.",
+      ),
+    ).toBeVisible();
+    await userEvent.click(
+      within(document.body).getByRole("button", { name: "Dismiss Capture notice" }),
+    );
+    await expect(within(document.body).queryByText("Capture notice")).toBeNull();
+  },
+};

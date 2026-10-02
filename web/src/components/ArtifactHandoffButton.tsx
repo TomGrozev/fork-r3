@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { feedbackFetchCommand } from "../artifact-handoff.ts";
 import { copyText } from "../clipboard.ts";
 import { Button, StrokeIcon, useCopyFlash, useEscape, usePopoverFocus } from "../ui.tsx";
 import type { useArtifactHandoff } from "../useArtifactHandoff.ts";
@@ -59,10 +60,7 @@ function FeedbackCommand({
   const popup = useRef<HTMLDivElement>(null);
   const { copied, flash } = useCopyFlash();
   const [error, setError] = useState("");
-  const argument = /^[a-zA-Z0-9_-]+$/.test(artifactId)
-    ? artifactId
-    : `'${artifactId.replaceAll("'", "'\\''")}'`;
-  const command = `r3 feedback fetch ${argument}`;
+  const command = feedbackFetchCommand(artifactId);
   useLayoutEffect(() => {
     const node = popup.current;
     const button = trigger.current;

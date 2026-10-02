@@ -36,6 +36,7 @@ import { ArtifactLoading } from "./ArtifactLoading.tsx";
 import { ArtifactPreviewCompatibilityConsent } from "./ArtifactPreviewCompatibilityConsent.tsx";
 import { ArtifactPreviewNetworkControl } from "./ArtifactPreviewNetworkControl.tsx";
 import { ArtifactPreviewSecuritySource } from "./ArtifactPreviewSecurity.tsx";
+import { Notification } from "./Notifications.tsx";
 import { PassiveMarkdown } from "./PassiveMarkdown.tsx";
 import { PreviewScreenshot } from "./PreviewScreenshot.tsx";
 
@@ -911,12 +912,12 @@ function PreviewSession(
         />
       )}
       {notice && (
-        <p
-          role="status"
-          className="border-b border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
-        >
-          {notice}
-        </p>
+        <Notification
+          title="Preview notice"
+          message={notice}
+          tone="warning"
+          onDismiss={() => setNotice("")}
+        />
       )}
       {src && !error && (
         <iframe

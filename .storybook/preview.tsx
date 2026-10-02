@@ -3,6 +3,7 @@ import type { Decorator, Preview } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { ImagePreparation } from "../web/src/components/ImagePreparation.tsx";
+import { NotificationProvider } from "../web/src/components/Notifications.tsx";
 // Storybook's CSS entry: re-exports the app stylesheet and adds .storybook to
 // Tailwind's sources (so decorator-only utilities like min-h-screen exist here
 // but not in the app bundle). The Tailwind v4 Vite plugin (see main.ts)
@@ -37,7 +38,9 @@ const QuerySeed = ({
   for (const [key, data] of seed ?? []) client.setQueryData(key, data);
   return (
     <QueryClientProvider client={client}>
-      <ImagePreparation>{children}</ImagePreparation>
+      <NotificationProvider>
+        <ImagePreparation>{children}</ImagePreparation>
+      </NotificationProvider>
     </QueryClientProvider>
   );
 };

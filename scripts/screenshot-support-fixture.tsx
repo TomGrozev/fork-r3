@@ -1,6 +1,7 @@
 // Isolated capability checks for the real screenshot toolbar; no daemon or publication.
 import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
+import { NotificationProvider } from "../web/src/components/Notifications.tsx";
 import { PreviewScreenshot } from "../web/src/components/PreviewScreenshot.tsx";
 import "../web/src/main.css";
 
@@ -28,4 +29,8 @@ function Fixture() {
     </>
   );
 }
-createRoot(document.getElementById("root")!).render(<Fixture />);
+createRoot(document.getElementById("root")!).render(
+  <NotificationProvider>
+    <Fixture />
+  </NotificationProvider>,
+);

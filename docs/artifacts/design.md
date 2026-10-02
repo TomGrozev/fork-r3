@@ -260,6 +260,15 @@ Deletion clears these positions when detected.
 Workspace containers follow the layer rules in `AGENTS.md`. Menus and notices use
 compact elevation; floating conversations/composers and dialogs use broader shadows.
 Shared overlay tokens provide strong border contrast and rim lighting in both themes.
+Transient delivery, lifecycle, workspace, preview, and capture notices share one
+stack at the bottom right of the viewport. A portal keeps the stack outside pane
+clipping and hidden feedback containers; each notice disappears when its originating
+component unmounts. Notices use a semantic icon, a short title, optional supporting
+text, and a visible dismiss control. Successful notices dismiss after five seconds,
+paused while hovered or focused; warnings and errors remain until dismissed. On
+phones the stack clears the feedback bar and respects safe areas. Capture hides the
+stack from captured pixels. Field validation and persistent navigation actions stay
+with their controls.
 Mobile sheets cast upward and retain their intentional rounded top corners. The
 floating composer has one complete neutral outer border and no colored left stripe.
 
@@ -354,9 +363,13 @@ It shows `r3 feedback fetch <id>` and a copy icon, with instructions to run it u
 The panel retains the same control, including on mobile. Command popovers support
 Escape, outside dismissal, and focus return; their top layer avoids pane clipping.
 Both send controls share the in-flight request guard and delivery receipts.
-Navbar handoff errors remain visible beside that action. Posting adds feedback to
+Handoff errors appear in the shared corner stack with guidance to check that the
+agent session is running and listening, a copyable fetch command, and expandable
+delivery details. Posting adds feedback to
 r3; **Send to agent · N** notifies the registered recipient. Successful notification
-delivery shows **Sent** for three seconds, then hides the navbar action and keeps
+delivery, including Codex queue acceptance, shows **Sent** for three seconds and
+the same **Agent notified** notice. This confirms adapter acceptance, never that
+the agent read or processed feedback. It then hides the navbar action and keeps
 the panel button disabled until new human inputs are pending. A browser receipt covers exactly the inputs present when
 the ping began; concurrent edits remain eligible. Agent replies, claims, and body
 edits do not invalidate that receipt. Receipts synchronize across tabs and retain the latest successful request, so
@@ -738,7 +751,8 @@ HTML previews offer Capture area where current-tab Region Capture and still-fram
 capture are available. Its single camera icon sits beside Comment mode in the
 navbar, is mounted only for a ready HTML preview, and is hidden when unsupported.
 Capture state stays with that preview, so navigation removes the action and cancels
-in-flight work. The same icon cancels a pending capture; notices appear in a popover.
+in-flight work. The same icon cancels a pending capture; notices use the shared
+corner stack. Dismissing the pending capture notice also cancels capture.
 The trusted workspace opens the browser's sharing chooser, crops the tab stream
 to the preview iframe, freezes one frame, and stops every track before opening the
 crop editor. Only the selected crop enters the draft. Sharing denial, wrong-surface

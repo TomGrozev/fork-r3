@@ -19,10 +19,12 @@ import { AgentName } from "./AgentName.tsx";
 import { AppHeader } from "./AppHeader.tsx";
 import { ArtifactFeedbackToggle } from "./ArtifactFeedbackToggle.tsx";
 import { ArtifactHandoffButton } from "./ArtifactHandoffButton.tsx";
+import { ArtifactHandoffNotice } from "./ArtifactHandoffNotice.tsx";
 import { ArtifactKindIcon } from "./ArtifactKindIcon.tsx";
 import { ArtifactPreviewSecurity } from "./ArtifactPreviewSecurity.tsx";
 import { ArtifactOpenLatest, ArtifactVersionSelect } from "./ArtifactVersionSelect.tsx";
 import { MessageProse } from "./Message.tsx";
+import { Notification, type NotificationProps } from "./Notifications.tsx";
 import { SettingsDialog } from "./SettingsPopup.tsx";
 
 function ArtifactSendFeedback({ detail, visible }: { detail: ArtifactDetail; visible: boolean }) {
@@ -36,19 +38,7 @@ function ArtifactSendFeedback({ detail, visible }: { detail: ArtifactDetail; vis
           </div>
         )}
       </div>
-      {(handoff.notice || handoff.error) && (
-        <div className="absolute right-0 top-full z-50 mt-2 flex w-72 max-w-[calc(100vw-1rem)] items-start gap-2 rounded-lg border border-neutral-300 bg-white p-3 text-xs r3-popover dark:border-neutral-700 dark:bg-neutral-950">
-          <p
-            role={handoff.error ? "alert" : "status"}
-            className={handoff.error ? "text-red-600" : "text-neutral-500"}
-          >
-            {handoff.error?.message ?? handoff.notice}
-          </p>
-          <Button variant="ghost" aria-label="Dismiss delivery notice" onClick={handoff.dismiss}>
-            ×
-          </Button>
-        </div>
-      )}
+      <ArtifactHandoffNotice handoff={handoff} />
     </div>
   );
 }
@@ -60,7 +50,7 @@ export function ArtifactArchiveDialog({
 }: {
   artifactId: string;
   onCancel: () => void;
-  onDone: (notice: string) => void;
+  onDone: (notice: Omit<NotificationProps, "onDismiss">) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [message, setMessage] = useState("");
@@ -83,10 +73,20 @@ export function ArtifactArchiveDialog({
       void qc.invalidateQueries({ queryKey: ["artifacts"] });
       onDone(
         result.notification.state === "failed"
-          ? `Archived. The message was saved. ${result.notification.error}`
-          : result.notification.state === "queued"
-            ? "Archived. Message queued in Codex."
-            : "Archived.",
+          ? {
+              title: "Archived, but agent notification failed",
+              message:
+                "Your message is saved in the artifact history. Check that the agent session is still running.",
+              tone: "warning",
+              details: result.notification.error,
+            }
+          : {
+              title: "Artifact archived",
+              tone: "success",
+              message: result.event.message
+                ? "Your message is saved in the artifact history."
+                : undefined,
+            },
       );
     },
   });
@@ -190,7 +190,7 @@ export function ArtifactHeader({
   useEffect(() => {
     if (detailsOpen) (editingTitle ? titleInput : titleButton).current?.focus();
   }, [editingTitle, detailsOpen]);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<Omit<NotificationProps, "onDismiss"> | null>(null);
   const restoreKey = useRef<string | null>(null);
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["artifact", detail.id] });
@@ -214,7 +214,11 @@ export function ArtifactHeader({
     onSuccess: () => {
       restoreKey.current = null;
       refresh();
-      setNotice("Restored. An agent can register a new listener.");
+      setNotice({
+        title: "Artifact restored",
+        message: "An agent can register a new listener.",
+        tone: "success",
+      });
     },
   });
   const error = edit.error ?? restore.error;
@@ -502,26 +506,17 @@ export function ArtifactHeader({
           )}
         </div>
       </div>
-      {(notice || error) && (
-        <div
-          role={error ? "alert" : "status"}
-          className="absolute right-2 top-full z-30 mt-1 flex max-w-[calc(100vw-1rem)] items-center gap-2 rounded-lg border border-neutral-300 bg-white p-3 text-xs r3-popover dark:border-neutral-700 dark:bg-neutral-950"
-        >
-          <span className={error ? "text-red-600" : "text-neutral-500"}>
-            {error?.message ?? notice}
-          </span>
-          <Button
-            variant="ghost"
-            aria-label="Dismiss notice"
-            onClick={() => {
-              setNotice("");
-              edit.reset();
-              restore.reset();
-            }}
-          >
-            ×
-          </Button>
-        </div>
+      {notice && <Notification {...notice} onDismiss={() => setNotice(null)} />}
+      {error && (
+        <Notification
+          title="Could not update artifact"
+          message={error.message}
+          tone="error"
+          onDismiss={() => {
+            edit.reset();
+            restore.reset();
+          }}
+        />
       )}
       {settingsOpen && (
         <SettingsDialog onClose={() => setSettingsOpen(false)} trigger={detailsTrigger} />

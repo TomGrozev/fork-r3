@@ -7,6 +7,7 @@ import { imageMessageBody } from "../image-placeholders.ts";
 import { canCapturePreview, capturePreview } from "../screenshot.ts";
 import { Button, StrokeIcon } from "../ui.tsx";
 import { ImageEditor } from "./ImageEditor.tsx";
+import { Notification } from "./Notifications.tsx";
 
 export function PreviewScreenshot({
   artifactId,
@@ -121,22 +122,22 @@ export function PreviewScreenshot({
           </StrokeIcon>
         </Button>
         {(pending || notice) && (
-          <div className="absolute right-0 top-full z-50 mt-2 flex w-72 max-w-[calc(100vw-1rem)] items-start gap-2 rounded-lg border border-neutral-300 bg-white p-3 text-xs text-neutral-500 r3-popover dark:border-neutral-700 dark:bg-neutral-950">
-            <p role="status">
-              {pending
-                ? "Choose this r3 tab in the browser sharing prompt. Click Cancel capture to stop."
-                : notice}
-            </p>
-            {!pending && (
-              <Button
-                variant="ghost"
-                aria-label="Dismiss capture notice"
-                onClick={() => setNotice("")}
-              >
-                ×
-              </Button>
-            )}
-          </div>
+          <Notification
+            title={pending ? "Choose this r3 tab" : "Capture notice"}
+            message={
+              pending
+                ? "Choose this r3 tab in the browser sharing prompt. Use Cancel capture to stop."
+                : notice
+            }
+            onDismiss={() => {
+              if (pending) {
+                operation.current?.abort();
+                delete document.documentElement.dataset.r3Screenshot;
+                setPending(false);
+              }
+              setNotice("");
+            }}
+          />
         )}
       </div>
       {snapshot && (

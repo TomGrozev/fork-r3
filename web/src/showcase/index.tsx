@@ -23,6 +23,7 @@ import { DiffView } from "../components/DiffView.tsx";
 import { FileBrowser } from "../components/FileBrowser.tsx";
 import { FileCard, type FoldSignal } from "../components/FileCard.tsx";
 import { MessageProse } from "../components/Message.tsx";
+import { NotificationProvider } from "../components/Notifications.tsx";
 import { DiffLayoutToggle, PaneToolbar } from "../components/PaneToolbar.tsx";
 import { SourceCode } from "../components/SourceCode.tsx";
 import { useTheme } from "../hooks.ts";
@@ -543,6 +544,8 @@ function Showcase() {
 
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={client}>
-    <Showcase />
+    <NotificationProvider>
+      <Showcase />
+    </NotificationProvider>
   </QueryClientProvider>,
 );

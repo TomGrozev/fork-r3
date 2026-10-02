@@ -837,6 +837,40 @@ export const SentHandoff: Story = {
     await waitFor(() => expect(send).toBeEnabled());
     await userEvent.click(send);
     await expect(await canvas.findByRole("button", { name: "Sent" })).toBeDisabled();
+    await expect(await within(document.body).findByText("Agent notified")).toBeVisible();
+  },
+};
+
+export const QueuedHandoff: Story = {
+  ...SentHandoff,
+  beforeEach: () => {
+    const original = artifactApi.submit;
+    artifactApi.submit = async () => ({ notification: { state: "queued" } });
+    return () => {
+      artifactApi.submit = original;
+    };
+  },
+};
+
+export const FailedHandoff: Story = {
+  ...SentHandoff,
+  beforeEach: () => {
+    const original = artifactApi.submit;
+    artifactApi.submit = async () => {
+      throw new Error("Delivery adapter is unavailable");
+    };
+    return () => {
+      artifactApi.submit = original;
+    };
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const send = canvas.getByRole("button", { name: "Send to agent · 1" });
+    await waitFor(() => expect(send).toBeEnabled());
+    await userEvent.click(send);
+    const alert = await within(document.body).findByRole("alert");
+    await expect(alert).toHaveTextContent("Check that your agent session is still running");
+    await expect(send).toBeEnabled();
   },
 };
 

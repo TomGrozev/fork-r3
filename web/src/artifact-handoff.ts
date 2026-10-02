@@ -147,3 +147,9 @@ export function useFeedbackHandoffReceipt(artifactId: string, feedback: Artifact
     remember: (attempt: Attempt) => remember(artifactId, attempt),
   };
 }
+export function feedbackFetchCommand(artifactId: string): string {
+  const argument = /^[a-zA-Z0-9_-]+$/.test(artifactId)
+    ? artifactId
+    : `'${artifactId.replaceAll("'", "'\\''")}'`;
+  return `r3 feedback fetch ${argument}`;
+}

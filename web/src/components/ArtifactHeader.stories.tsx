@@ -432,6 +432,7 @@ export const SendSuccess: Story = {
     await waitFor(() => expect(send).toBeEnabled());
     await userEvent.click(send);
     await expect(await canvas.findByRole("button", { name: "Sent" })).toBeDisabled();
+    await expect(await within(document.body).findByText("Agent notified")).toBeVisible();
   },
 };
 export const SendFailure: Story = {
@@ -451,12 +452,28 @@ export const SendFailure: Story = {
     const send = canvas.getByRole("button", { name: "Send to agent · 1" });
     await waitFor(() => expect(send).toBeEnabled());
     await userEvent.click(send);
-    await expect(await canvas.findByRole("alert")).toHaveTextContent(
-      "The agent could not be reached",
-    );
+    const alert = await within(document.body).findByRole("alert");
+    await expect(alert).toHaveTextContent("Check that your agent session is still running");
+    await expect(within(alert).getByRole("button", { name: "Copy fetch command" })).toBeVisible();
     await expect(send).toBeEnabled();
+    await userEvent.click(
+      within(alert).getByRole("button", { name: "Dismiss Agent notification failed" }),
+    );
+    await expect(within(document.body).queryByRole("alert")).toBeNull();
   },
 };
+export const SendQueued: Story = {
+  ...SendSuccess,
+  beforeEach: () => {
+    resetHandoffReceipt();
+    const original = artifactApi.submit;
+    artifactApi.submit = async () => ({ notification: { state: "queued" } });
+    return () => {
+      artifactApi.submit = original;
+    };
+  },
+};
+export const SendFailureDark: Story = { ...SendFailure, globals: { theme: "dark" } };
 export const LongTitlePendingSend: Story = {
   ...PendingSend,
   args: {

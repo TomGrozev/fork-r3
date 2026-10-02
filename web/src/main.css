@@ -143,6 +143,31 @@ html.dark {
     0 2px 4px var(--r3-overlay-contact),
     0 8px 24px var(--r3-overlay-cast);
 }
+
+.r3-notifications {
+  position: fixed;
+  z-index: 60;
+  right: env(safe-area-inset-right);
+  bottom: env(safe-area-inset-bottom);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 24rem;
+  max-width: calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right));
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  padding: 1rem;
+  overflow-y: auto;
+  pointer-events: none;
+}
+.r3-notification {
+  pointer-events: auto;
+}
+@media (width < 48rem) {
+  .r3-notifications {
+    bottom: calc(2.5rem + env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 2.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+}
 .r3-floating,
 .r3-modal {
   box-shadow:
@@ -623,6 +648,7 @@ html.dark .r3-ref {
 }
 
 /* Detached workspace controls must not cover a captured preview. */
-html[data-r3-screenshot] .r3-floating {
+html[data-r3-screenshot] .r3-floating,
+html[data-r3-screenshot] .r3-notifications {
   visibility: hidden;
 }

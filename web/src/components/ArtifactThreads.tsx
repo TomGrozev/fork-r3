@@ -49,6 +49,7 @@ import { useArtifactHandoff } from "../useArtifactHandoff.ts";
 import { AgentName } from "./AgentName.tsx";
 import { ArtifactComposer } from "./ArtifactComposer.tsx";
 import { ArtifactHandoffButton } from "./ArtifactHandoffButton.tsx";
+import { ArtifactHandoffNotice } from "./ArtifactHandoffNotice.tsx";
 import { MessageProse, QuoteBubble, useQuoteBubble } from "./Message.tsx";
 import {
   type EditableImage,
@@ -713,7 +714,7 @@ export function ArtifactThreads({
     );
   }, [activeFeedback, detail.feedback, setTab]);
   const handoff = useArtifactHandoff({ ...detail, feedback: notes });
-  const { draftCount, watchers, pending, notice } = handoff;
+  const { draftCount, watchers, pending } = handoff;
   const noteOpen = useArtifactNoteOpen(detail.id);
   const wasNoteOpen = useRef(noteOpen);
   useEffect(() => {
@@ -950,17 +951,7 @@ export function ArtifactThreads({
           </FeedbackCreationContext.Provider>
         </div>
       </div>
-      {(notice || handoff.error) && (
-        <p
-          role={handoff.error ? "alert" : "status"}
-          className={cn(
-            "shrink-0 border-t border-neutral-300 px-3 py-2 text-xs dark:border-neutral-700",
-            handoff.error ? "text-red-600" : "text-neutral-500",
-          )}
-        >
-          {handoff.error?.message ?? notice}
-        </p>
-      )}
+      <ArtifactHandoffNotice handoff={handoff} />
     </section>
   );
 }

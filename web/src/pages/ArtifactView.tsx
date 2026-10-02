@@ -43,6 +43,7 @@ import type { FoldSignal } from "../components/FileCard.tsx";
 import { ImagePreparation } from "../components/ImagePreparation.tsx";
 import { JumpToFile } from "../components/JumpToFile.tsx";
 import { QuoteBubble, type QuotePos } from "../components/Message.tsx";
+import { Notification, NotificationProvider } from "../components/Notifications.tsx";
 import { DiffLayoutToggle, PaneToolbar, TOOLBAR_BTN } from "../components/PaneToolbar.tsx";
 import { ShortcutsOverlay } from "../components/ShortcutsOverlay.tsx";
 import { keysSuspended, useKeyBindings } from "../keys.ts";
@@ -174,11 +175,13 @@ interface ArtifactWorkspaceProps {
 export function ArtifactWorkspace(props: ArtifactWorkspaceProps) {
   const detail = useOptimisticArtifact(props.detail);
   return (
-    <ArtifactPreviewSecurityProvider>
-      <ImagePreparation>
-        <Workspace {...props} detail={detail} />
-      </ImagePreparation>
-    </ArtifactPreviewSecurityProvider>
+    <NotificationProvider>
+      <ArtifactPreviewSecurityProvider>
+        <ImagePreparation>
+          <Workspace {...props} detail={detail} />
+        </ImagePreparation>
+      </ArtifactPreviewSecurityProvider>
+    </NotificationProvider>
   );
 }
 
@@ -817,12 +820,12 @@ function Workspace({
           >
             {toolbar}
             {notice && (
-              <p
-                role="status"
-                className="border-b border-neutral-200 p-3 text-sm text-amber-700 dark:border-neutral-800 dark:text-amber-400"
-              >
-                {notice}
-              </p>
+              <Notification
+                title="Review notice"
+                message={notice}
+                tone="warning"
+                onDismiss={() => setNotice("")}
+              />
             )}
             {failure && (
               <p role="alert" className="p-4 text-sm text-red-600">
