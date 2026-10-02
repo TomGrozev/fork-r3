@@ -384,6 +384,14 @@ export const Diff: Story = {
   },
 };
 export const Html: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "HTML uses the published document's styles and does not request a source syntax palette.",
+      },
+    },
+  },
   args: {
     detail: {
       ...detail,

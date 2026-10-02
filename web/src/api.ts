@@ -4,6 +4,8 @@ import { draftImages } from "./attachment-drafts.ts";
 
 import { markdownCache } from "./markdown-cache.ts";
 import type {
+  ApplicationBootstrap,
+  ArtifactDetail,
   AuthTokenInfo,
   BootResponse,
   CreateAuthTokenBody,
@@ -28,7 +30,21 @@ export const CAN_MANAGE_TOKENS = true;
 // Bootstrap before first render. When the daemon isn't exposed it returns the
 // per-user token (sent as x-r3-token below); when exposed it needs a login-token
 // session and answers 401 `{ needsAuth:true }`, and the caller shows the login screen.
-export async function loadBoot(): Promise<{ needsAuth: boolean }> {
+export async function loadBoot(
+  initial?: ApplicationBootstrap,
+): Promise<{ needsAuth: boolean; artifact?: ArtifactDetail }> {
+  if (initial) {
+    const suspended = await Promise.all([
+      markdownCache.authenticationSuspended(),
+      draftImages.authenticationSuspended(),
+    ]);
+    if (!suspended.some(Boolean)) {
+      TOKEN = initial.boot.token ?? "";
+      // The HTML request preceded our cache reads. Never resume a cache from
+      // this snapshot: logout may have raced the document or its bundle load.
+      return { needsAuth: false, ...(initial.artifact ? { artifact: initial.artifact } : {}) };
+    }
+  }
   const cacheEpoch = await markdownCache.authenticationEpoch();
   const imageEpoch = await draftImages.epoch();
   const r = await fetch("/api/boot");

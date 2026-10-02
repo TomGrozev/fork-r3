@@ -1,6 +1,14 @@
 import { Hono } from "hono";
+import { parse as parseCookie } from "hono/utils/cookie";
 import type { ArtifactDetail, ArtifactKind, ArtifactState } from "../shared/artifacts.ts";
-import { type ArtifactAuthPolicy, installArtifactAuth } from "./artifact-auth.ts";
+import type { ApplicationBootstrap } from "../shared/types.ts";
+import {
+  type ArtifactAuthPolicy,
+  artifactBoot,
+  artifactRequestHostname,
+  artifactSameOrigin,
+  installArtifactAuth,
+} from "./artifact-auth.ts";
 import { ArtifactCollaboration, type LocalAgentDelivery } from "./artifact-collaboration.ts";
 import { installArtifactConversations } from "./artifact-conversation-api.ts";
 import { artifactJson, artifactJsonResponse } from "./artifact-http.ts";
@@ -8,6 +16,7 @@ import { artifactResourceResponse } from "./artifact-resources.ts";
 import { artifactSourceResponse } from "./artifact-source.ts";
 import type { ArtifactStorage } from "./artifact-storage.ts";
 import { ArtifactError, requireArtifactPath, requireSequence } from "./artifact-validation.ts";
+import { COOKIE_NAME } from "./auth.ts";
 import { listThemes, themeStyle } from "./highlight.ts";
 import { renderStoredPatch, storedPatchContext } from "./patch-content.ts";
 import type { PreviewHost } from "./preview-host.ts";
@@ -44,6 +53,31 @@ export function createArtifactApi(
     storage.listeners,
     options.deliver,
   );
+  const detail = (id: string): ArtifactDetail => ({
+    ...artifactDetail(storage, id),
+    watching: collaboration.watching(id),
+  });
+  const bootstrap = (request: Request): ApplicationBootstrap | null => {
+    const host = artifactRequestHostname(request);
+    if (host === null || !policy.allowedHost(host) || !artifactSameOrigin(request, policy))
+      return null;
+    const cookie = parseCookie(request.headers.get("cookie") ?? "", COOKIE_NAME)[COOKIE_NAME];
+    const boot = artifactBoot(storage.authentication, policy, cookie);
+    // Missing Strict cookies on cross-site entry need the same-origin /api/boot
+    // fallback after navigation. Never embed private data in that generic shell.
+    if (boot.needsAuth) return null;
+    const path = new URL(request.url).pathname;
+    const id = /^\/((?:artifact|review)_[\w]+)\/?$/.exec(path)?.[1];
+    let artifact: ArtifactDetail | null = null;
+    if (id) {
+      try {
+        artifact = detail(id);
+      } catch (error) {
+        if (!(error instanceof ArtifactError) || error.status !== 404) throw error;
+      }
+    }
+    return { path, boot, artifact };
+  };
   app.onError((error, c) =>
     error instanceof ArtifactError
       ? c.json({ error: error.message }, error.status)
@@ -106,9 +140,7 @@ export function createArtifactApi(
     return c.json(artifact, 201);
   });
   app.get("/api/artifacts/:id", (c) => {
-    const detail = artifactDetail(storage, c.req.param("id"));
-    detail.watching = collaboration.watching(detail.id);
-    return artifactJsonResponse(c.req.raw, detail);
+    return artifactJsonResponse(c.req.raw, detail(c.req.param("id")));
   });
   app.patch("/api/artifacts/:id", async (c) => {
     const artifact = artifacts.edit(c.req.param("id"), await artifactJson(c.req.raw));
@@ -221,9 +253,6 @@ export function createArtifactApi(
     artifacts.setViewed(c.req.param("id"), await artifactJson(c.req.raw));
     return c.json({ ok: true });
   });
-  const conversations = installArtifactConversations(app, storage, collaboration, (id) => ({
-    ...artifactDetail(storage, id),
-    watching: collaboration.watching(id),
-  }));
-  return { app, collaboration, close: conversations.close };
+  const conversations = installArtifactConversations(app, storage, collaboration, detail);
+  return { app, bootstrap, collaboration, close: conversations.close };
 }

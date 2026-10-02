@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import type { HTMLBundle } from "bun";
+import type { ApplicationBootstrap } from "../shared/types.ts";
+import { acceptsGzip, gzipBody } from "./compress.ts";
 
 export interface ApplicationAsset {
   body: Blob;
@@ -9,6 +11,46 @@ export interface ApplicationAsset {
 export interface ApplicationAssets {
   index: ApplicationAsset;
   files: ReadonlyMap<string, ApplicationAsset>;
+}
+
+const isApplicationDocument = (path: string) =>
+  path === "/" || /^\/(?:artifact|review)_[\w]+\/?$/.test(path);
+
+// Static assets retain immutable caching. Documents are per-request auth
+// snapshots: never reuse a validator or a personalized body after logout.
+export function createApplicationResponse(
+  assets: ApplicationAssets,
+  bootstrap: (request: Request) => ApplicationBootstrap | null,
+) {
+  const shell = assets.index.body.text();
+  return async (request: Request): Promise<Response> => {
+    if (
+      !isApplicationDocument(new URL(request.url).pathname) ||
+      !["GET", "HEAD"].includes(request.method)
+    )
+      return applicationAssetResponse(assets, request);
+    const data = bootstrap(request);
+    const base = applicationAssetResponse(assets, request);
+    const headers = new Headers(base.headers);
+    headers.set("Cache-Control", "private, no-store");
+    headers.set("Vary", "Cookie, Accept-Encoding");
+    headers.delete("ETag");
+    let html = await shell;
+    if (data) {
+      const json = JSON.stringify(data).replaceAll("<", "\\u003c");
+      const script = `<script id="r3-bootstrap" type="application/json">${json}</script>`;
+      html = /<\/head>/i.test(html)
+        ? html.replace(/<\/head>/i, () => `${script}</head>`)
+        : html + script;
+    }
+    let body: Uint8Array<ArrayBuffer> = new TextEncoder().encode(html);
+    if (body.byteLength >= 1024 && acceptsGzip(request)) {
+      body = await gzipBody(body);
+      headers.set("Content-Encoding", "gzip");
+    }
+    headers.set("Content-Length", String(body.byteLength));
+    return new Response(request.method === "HEAD" ? null : body, { headers });
+  };
 }
 
 // Both distributions use explicit HTTP responses so application frame/Host
@@ -54,7 +96,7 @@ export async function loadApplicationAssets(bundle: HTMLBundle): Promise<Applica
 
 export function applicationAssetResponse(assets: ApplicationAssets, request: Request): Response {
   const path = new URL(request.url).pathname;
-  const document = path === "/" || /^\/(?:artifact|review)_[\w]+\/?$/.test(path);
+  const document = isApplicationDocument(path);
   const asset = document ? assets.index : assets.files.get(path);
   const headers = new Headers({
     "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",

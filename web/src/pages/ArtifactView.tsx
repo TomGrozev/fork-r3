@@ -241,7 +241,7 @@ function Workspace({
     rounds,
     fetchContext,
   } = useArtifactContent(detail, view, setNotice);
-  const syntaxPalette = useSyntaxPalette(theme);
+  const syntaxPalette = useSyntaxPalette(theme, detail.kind !== "html");
   const fileMode = useCallback(
     (filePath: string): "source" | "rendered" =>
       view.path === filePath && view.representation !== "diff"

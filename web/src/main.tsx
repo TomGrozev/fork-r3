@@ -4,9 +4,11 @@ import { createRoot } from "react-dom/client";
 import { ArtifactApiError } from "../../shared/artifact-client.ts";
 import { App } from "./App.tsx";
 import { ApiError, loadBoot } from "./api.ts";
+import { takeApplicationBootstrap } from "./application-bootstrap.ts";
 import { Login } from "./components/Login.tsx";
 import { readDisplayPreference } from "./display-storage.ts";
 import { clampFont } from "./settings.ts";
+import type { ArtifactDetail } from "./types.ts";
 import "./main.css";
 
 // Restore the saved theme before first paint.
@@ -23,13 +25,12 @@ if (Number.isFinite(savedFont) && savedFont > 0) {
   document.documentElement.style.setProperty("--r3-font-size", `${clampFont(savedFont)}px`);
 }
 
-// Fetch the token before rendering — every mutating request needs it. Served by
-// the daemon, so on a normal load this is an instant loopback round-trip. If it
-// fails (daemon down / unreachable), paint a fallback instead of an empty #root.
+// Establish auth before rendering. An authenticated shell carries bootstrap and
+// its artifact detail; cross-site entry and suspended caches use a fresh read.
 async function main() {
-  let boot: { needsAuth: boolean };
+  let boot: { needsAuth: boolean; artifact?: ArtifactDetail };
   try {
-    boot = await loadBoot();
+    boot = await loadBoot(takeApplicationBootstrap());
   } catch (err) {
     renderBootError(err);
     return;
@@ -67,6 +68,7 @@ async function main() {
       },
     },
   });
+  if (boot.artifact) queryClient.setQueryData(["artifact", boot.artifact.id], boot.artifact);
 
   root.render(
     <StrictMode>
@@ -97,3 +99,8 @@ function renderBootError(err: unknown) {
 }
 
 void main();
+
+// A restored document must not reuse a pre-logout bootstrap/query snapshot.
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) location.reload();
+});

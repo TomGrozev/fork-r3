@@ -221,6 +221,12 @@ An opaque iframe's restrictive CSP permits only a trusted layout/scroll helper;
 publisher scripts, images, network requests, links, and feedback actions are absent.
 The normal interactive document replaces it once the gate and layout are ready.
 There is no additional login check and no display before application bootstrap.
+Authenticated application HTML carries bootstrap and the addressed artifact's
+detail, so the workspace can start without two serial API round trips. The shell
+uses private/no-store responses with escaped JSON; static bundles remain cached.
+Cross-site entry falls back to same-origin bootstrap. Inline snapshots never
+resume suspended caches: those use fresh bootstrap with the existing epoch guards.
+SSE ready/reconnect continues to reconcile mutable artifact state in the background.
 Cold visits retain the loading indicator. Definitive failures remove the reading
 view; cached bytes never bypass authorization for server access.
 

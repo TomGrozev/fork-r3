@@ -4,11 +4,12 @@ import { api } from "./api.ts";
 
 // Highlighted bytes and palette rules share the selected theme. Keep one sheet
 // for all source/diff blocks; no highlighter or theme package runs in the SPA.
-export function useSyntaxPalette(theme: string): CSSProperties | undefined {
+export function useSyntaxPalette(theme: string, enabled = true): CSSProperties | undefined {
   const { data } = useQuery({
     queryKey: ["theme-style", theme],
     queryFn: () => api.themeStyle(theme),
     staleTime: Infinity,
+    enabled,
   });
   useEffect(() => {
     if (!data) return;

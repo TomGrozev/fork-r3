@@ -141,6 +141,11 @@ atomically clears durable records; restore requires a new publication/registrati
   documents have opaque origins.
 - `GET /api/health` reports version and `protocol: artifacts-v1`; `GET /api/boot`
   supplies local bootstrap or required-login state. Both remain Host/origin gated.
+  Authenticated application HTML may inline that bootstrap plus the current
+  `ArtifactDetail`, using the same contracts to seed the initial workspace.
+  These documents are private/no-store; cross-site entry, absent session cookies,
+  and suspended browser caches fall back to `/api/boot`. API checks remain on
+  every data request, and SSE ready still triggers background reconciliation.
 - `POST /api/auth/login { token }` mints a browser session; `POST /api/auth/logout`
   destroys it. `GET/POST/DELETE /api/auth/tokens` and `DELETE .../tokens/:id`
   manage revocable login tokens. Current-session individual revocation conflicts.

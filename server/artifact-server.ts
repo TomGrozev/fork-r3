@@ -1,5 +1,5 @@
 import type { ApplicationAssets } from "./application-assets.ts";
-import { applicationAssetResponse } from "./application-assets.ts";
+import { createApplicationResponse } from "./application-assets.ts";
 import { createArtifactApi } from "./artifact-api.ts";
 import { type ArtifactAuthPolicy, artifactRequestHostname } from "./artifact-auth.ts";
 import type { ArtifactStorage } from "./artifact-storage.ts";
@@ -46,6 +46,7 @@ export function startArtifactServer(options: ArtifactServerOptions) {
     const policy = options.authentication;
     api = createArtifactApi(options.storage, policy, { previews, deliver: deliverLocalAgent });
     const application = api;
+    const assets = createApplicationResponse(options.assets, application.bootstrap);
     const server = Bun.serve({
       hostname: options.bind,
       port: options.port,
@@ -68,7 +69,7 @@ export function startArtifactServer(options: ArtifactServerOptions) {
         if (path.startsWith(PREVIEW_PREFIX))
           return previews.fetch(request, policy.applicationOrigins);
         if (path.startsWith("/api/")) return application.app.fetch(request);
-        return applicationAssetResponse(options.assets, request);
+        return assets(request);
       },
     });
     let stopped = false;

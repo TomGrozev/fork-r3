@@ -53,11 +53,6 @@ function checkPreviewBrowser({
         report("unsupported", "Open r3 over HTTPS or localhost to use rendered previews.");
         return;
       }
-      const control = await fetch(`${root}/r3/check`, {
-        cache: "no-store",
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!control.ok) throw new Error("Preview check unavailable");
       const blocked = async () => {
         try {
           await fetch(`${root}/outside/check`, {
@@ -69,8 +64,18 @@ function checkPreviewBrowser({
           return error instanceof TypeError;
         }
       };
+      // Independent probes share one wait. A successful allowed control is
+      // still mandatory: a transport failure must never prove network blocking.
+      const [control, connections, rtc] = await Promise.all([
+        fetch(`${root}/r3/check`, {
+          cache: "no-store",
+          signal: AbortSignal.timeout(5000),
+        }),
+        network === "blocked" ? blocked() : true,
+        network === "blocked" ? rtcBlocked() : true,
+      ]);
+      if (!control.ok) throw new Error("Preview check unavailable");
       if (network === "blocked") {
-        const [connections, rtc] = await Promise.all([blocked(), rtcBlocked()]);
         if (!connections || !rtc) {
           report(
             "unsupported",

@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import type { BootResponse } from "../shared/types.ts";
 import { artifactJson } from "./artifact-http.ts";
 import { type AuthService, COOKIE_NAME, cookieOptions } from "./auth.ts";
 
@@ -51,6 +52,15 @@ function equalToken(candidate: string | null, expected: string): boolean {
   return bytes.length === secret.length && timingSafeEqual(bytes, secret);
 }
 
+export function artifactBoot(
+  authentication: AuthService,
+  policy: ArtifactAuthPolicy,
+  cookie: string | undefined,
+): BootResponse {
+  if (!policy.requireLogin) return { needsAuth: false, token: policy.token };
+  return { needsAuth: !authentication.sessionValid(cookie), token: null };
+}
+
 // Authenticated fetch streams serve both browser and agent SSE, so events no
 // longer need a token-free exception. The local no-login bootstrap still has
 // r3's deliberate local-process trust boundary.
@@ -84,9 +94,8 @@ export function installArtifactAuth(
     c.json({ ok: true, version: policy.version, protocol: "artifacts-v1" }),
   );
   app.get("/api/boot", (c) => {
-    if (!policy.requireLogin) return c.json({ needsAuth: false, token: policy.token });
-    const signedIn = authentication.sessionValid(getCookie(c, COOKIE_NAME));
-    return c.json({ needsAuth: !signedIn, token: null }, signedIn ? 200 : 401);
+    const boot = artifactBoot(authentication, policy, getCookie(c, COOKIE_NAME));
+    return c.json(boot, boot.needsAuth ? 401 : 200);
   });
   app.post("/api/auth/login", async (c) => {
     const input = await artifactJson(c.req.raw, 64 * 1024);

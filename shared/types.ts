@@ -129,6 +129,14 @@ export interface BootResponse {
   token: string | null;
 }
 
+// Authenticated, uncached application HTML may carry the same bootstrap and
+// artifact-detail contracts to avoid serial browser round trips.
+export interface ApplicationBootstrap {
+  path: string;
+  boot: BootResponse;
+  artifact: import("./artifacts.ts").ArtifactDetail | null;
+}
+
 // A login token's metadata (GET /api/auth/tokens, `r3 auth list-tokens`). The token
 // value itself is hashed at rest and shown only once at creation — never returned.
 export interface AuthTokenInfo {

@@ -271,6 +271,15 @@ export class MarkdownCache {
   suspend() {
     return this.purge(() => true, null, true);
   }
+  async authenticationSuspended(): Promise<boolean> {
+    try {
+      return await this.transaction(async (tx) =>
+        Boolean(await request(tx.objectStore("state").get("suspended"))),
+      );
+    } catch {
+      return false;
+    }
+  }
   async authenticationEpoch(): Promise<number | null> {
     try {
       return await this.transaction(

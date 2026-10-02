@@ -1,0 +1,142 @@
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { randomBytes } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ApplicationBootstrap } from "../shared/types.ts";
+import { createApplicationResponse } from "./application-assets.ts";
+import { createArtifactApi } from "./artifact-api.ts";
+import { type ArtifactStorage, openArtifactStorage } from "./artifact-storage.ts";
+import { COOKIE_NAME } from "./auth.ts";
+
+let root: string;
+let storage: ArtifactStorage;
+let api: ReturnType<typeof createArtifactApi>;
+let respond: ReturnType<typeof createApplicationResponse>;
+let token: string;
+let cookie: string;
+let tokenId: string;
+let artifactId: string;
+const title = "</script><script>window.injected=true</script><!-- $& $` $' </head>";
+const shell =
+  '<!doctype html><html><head><title>r3</title></head><body><div id="root"></div></body></html>';
+const request = (path: string, headers: Record<string, string> = {}, method = "GET") =>
+  new Request(`http://localhost${path}`, { method, headers: { host: "localhost", ...headers } });
+const snapshot = (html: string): ApplicationBootstrap | null => {
+  const json = /<script id="r3-bootstrap" type="application\/json">(.*?)<\/script>/s.exec(
+    html,
+  )?.[1];
+  return json ? JSON.parse(json) : null;
+};
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "r3-bootstrap-"));
+  storage = await openArtifactStorage({ databasePath: join(root, "store.sqlite") });
+  token = randomBytes(32).toString("base64url");
+  const login = storage.authentication.createLoginToken("bootstrap fixture");
+  tokenId = login.info.id;
+  cookie = `${COOKIE_NAME}=${storage.authentication.mintSession(tokenId).cookieValue}`;
+  artifactId = storage.artifacts.create({
+    kind: "html",
+    title,
+    actor: { role: "human", sessionId: null },
+  }).id;
+  setup(true);
+});
+function setup(requireLogin: boolean) {
+  api?.close();
+  api = createArtifactApi(storage, {
+    token,
+    requireLogin,
+    version: "test",
+    allowedHost: (host) => host === "localhost",
+    applicationOrigins: new Set(["https://reviews.example"]),
+  });
+  respond = createApplicationResponse(
+    {
+      index: {
+        body: new Blob([shell.replace("</body>", `${"<!-- fixture -->".repeat(100)}</body>`)]),
+        contentType: "text/html",
+        etag: '"shell"',
+      },
+      files: new Map([
+        [
+          "/fixture.js",
+          { body: new Blob(["void 0"]), contentType: "text/javascript", etag: '"asset"' },
+        ],
+      ]),
+    },
+    api.bootstrap,
+  );
+}
+afterEach(async () => {
+  api.close();
+  storage.close();
+  await rm(root, { recursive: true, force: true });
+});
+
+test("authenticated HTML embeds the API detail safely, privately, without reusable validators", async () => {
+  const r = await respond(request(`/${artifactId}`, { cookie, "if-none-match": '"shell"' }));
+  expect(r.status).toBe(200);
+  expect(r.headers.get("cache-control")).toBe("private, no-store");
+  expect(r.headers.has("etag")).toBe(false);
+  expect(r.headers.get("x-frame-options")).toBe("DENY");
+  expect(r.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+  const html = await r.text();
+  expect(html).not.toContain(token);
+  expect(html).not.toContain("<script>window.injected");
+  const data = snapshot(html)!;
+  expect(data.boot).toEqual({ needsAuth: false, token: null });
+  expect(data.artifact?.title).toBe(title);
+  const detail = await api.app.fetch(request(`/api/artifacts/${artifactId}`, { cookie }));
+  expect(data.artifact).toEqual(await detail.json());
+  const zipped = await respond(request(`/${artifactId}`, { cookie, "accept-encoding": "gzip" }));
+  expect(zipped.headers.get("content-encoding")).toBe("gzip");
+  expect(snapshot(new TextDecoder().decode(Bun.gunzipSync(await zipped.arrayBuffer())))).toEqual(
+    data,
+  );
+  const head = await respond(request(`/${artifactId}`, { cookie }, "HEAD"));
+  expect(await head.text()).toBe("");
+  expect(Number(head.headers.get("content-length"))).toBeGreaterThan(0);
+});
+
+test("cross-site, opaque, missing, and revoked credentials cannot acquire shell data", async () => {
+  const cases: Record<string, string>[] = [
+    {},
+    { cookie, origin: "null" },
+    { cookie, origin: "https://outside.example" },
+    { cookie, "sec-fetch-site": "cross-site" },
+    { cookie, "sec-fetch-site": "same-site" },
+    { cookie, host: "untrusted.example" },
+  ];
+  for (const headers of cases) {
+    const response = await respond(request(`/${artifactId}`, headers));
+    expect(snapshot(await response.text())).toBeNull();
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  }
+  expect(
+    api.bootstrap(request(`/${artifactId}`, { cookie, origin: "https://reviews.example" }))
+      ?.artifact?.id,
+  ).toBe(artifactId);
+  storage.authentication.revokeToken(tokenId);
+  const revoked = await respond(request(`/${artifactId}`, { cookie, "if-none-match": '"shell"' }));
+  expect(revoked.status).toBe(200);
+  expect(snapshot(await revoked.text())).toBeNull();
+  expect((await api.app.fetch(request(`/api/artifacts/${artifactId}`, { cookie }))).status).toBe(
+    401,
+  );
+});
+
+test("local bootstrap keeps its origin boundary and non-document assets stay immutable", async () => {
+  setup(false);
+  expect(snapshot(await (await respond(request("/"))).text())?.boot.token).toBe(token);
+  expect(
+    snapshot(await (await respond(request("/", { "sec-fetch-site": "cross-site" }))).text()),
+  ).toBeNull();
+  expect(snapshot(await (await respond(request("/", { origin: "null" }))).text())).toBeNull();
+  expect(snapshot(await (await respond(request("/artifact_missing"))).text())?.artifact).toBeNull();
+  expect((await respond(request("/artifact_missing/other"))).status).toBe(404);
+  expect((await respond(request("/", {}, "POST"))).status).toBe(405);
+  const asset = await respond(request("/fixture.js", { "if-none-match": '"asset"' }));
+  expect(asset.status).toBe(304);
+  expect(asset.headers.get("cache-control")).toContain("immutable");
+});

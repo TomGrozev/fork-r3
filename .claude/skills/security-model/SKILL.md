@@ -74,6 +74,23 @@ an HttpOnly, SameSite=Strict cookie, Secure at an HTTPS edge. The proxy must set
 X-Forwarded-Proto correctly. Individual revocation of the caller's current login
 token is refused; revoke-all is the deliberate escape hatch.
 
+Application HTML can embed bootstrap and the addressed artifact's detail after
+the same Host/origin checks and browser-session validation as bootstrap. Local
+no-login mode retains its existing bootstrap trust boundary. The embedded detail
+uses the API's complete shape and collaboration state; it seeds the browser query
+cache, while SSE ready/reconnect still reconciles current state in the background.
+Application documents are `private, no-store`, have no reusable validator, and
+escape `<` in embedded JSON. Static bundles retain immutable caching. Remote
+snapshots contain no API token. Cross-site/opaque requests and missing or revoked
+sessions receive only the generic shell, followed by same-origin `/api/boot`.
+This preserves Strict-cookie entry without widening cookie policy or API access.
+
+An HTML snapshot must never resume suspended Markdown/image caches: its request
+predates the browser's cache-generation read. If either cache is suspended, discard
+the snapshot and authenticate through `/api/boot` with the existing epoch guards.
+Otherwise inline bootstrap leaves cache suspension state untouched. A document
+restored from the back/forward cache reloads rather than reusing its auth snapshot.
+
 A proxy that rewrites Host to loopback can conceal remote exposure. Set
 `requireLogin` explicitly for such a deployment and advertise the application's
 publicUrl. Never rely on the proxy being detectable. Remote publishing uses an
@@ -134,6 +151,9 @@ network-risk consent before loading interactive publisher content, rather than m
 For an HTML version's declared entrypoint, context setup and the gate can run
 alongside the file manifest; the document waits for both gate success and manifest
 membership before loading.
+The allowed-fetch, forbidden-fetch, and WebRTC probes run concurrently. The gate
+still requires every applicable result; allowed-fetch failure is a transport
+error, never proof of network blocking or a reason to offer compatibility consent.
 Previously opened Markdown has a separate passive reading projection after normal
 application authentication. A template-based allowlist removes resource/navigation
 attributes, scripts, forms, embedded documents, and active SVG. It is displayed only

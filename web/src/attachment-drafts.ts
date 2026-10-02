@@ -84,6 +84,17 @@ export class DraftImageStore {
       return { generation, epoch: null };
     }
   }
+  async authenticationSuspended(): Promise<boolean> {
+    try {
+      const db = await this.open();
+      const suspended = await request(
+        db.transaction("state").objectStore("state").get("suspended"),
+      );
+      return this.suspended || Boolean(suspended);
+    } catch {
+      return this.suspended;
+    }
+  }
   async put(
     artifactId: string,
     blob: Blob,
