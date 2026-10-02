@@ -39,3 +39,16 @@ export async function gzipBody(data: Uint8Array<ArrayBuffer>): Promise<Uint8Arra
   if (data.byteLength < GZIP_OFF_THREAD_MIN) return Bun.gzipSync(data);
   return (await gzipOffThread(data)) as Uint8Array<ArrayBuffer>;
 }
+
+export function acceptsGzip(request: Request): boolean {
+  return (
+    request.headers
+      .get("accept-encoding")
+      ?.split(",")
+      .some((entry) => {
+        const [coding, ...parameters] = entry.trim().split(";");
+        const quality = parameters.find((part) => part.trim().startsWith("q="));
+        return coding === "gzip" && (quality === undefined || Number(quality.trim().slice(2)) > 0);
+      }) ?? false
+  );
+}

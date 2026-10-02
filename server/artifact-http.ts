@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { ArtifactError, requireObject } from "./artifact-validation.ts";
-import { gzipBody } from "./compress.ts";
+import { acceptsGzip, gzipBody } from "./compress.ts";
 
 // Count actual bytes, including chunked bodies and misleading Content-Length.
 // Call after authentication so an unauthenticated upload is never buffered.
@@ -68,15 +68,7 @@ export async function artifactJsonResponse(
   const etag = validator ?? `W/"${createHash("sha256").update(body).digest("hex")}"`;
   headers.set("ETag", etag);
   if (matchesEntityTag(request, etag)) return new Response(null, { status: 304, headers });
-  const gzip = request.headers
-    .get("accept-encoding")
-    ?.split(",")
-    .some((entry) => {
-      const [coding, ...parameters] = entry.trim().split(";");
-      const quality = parameters.find((part) => part.trim().startsWith("q="));
-      return coding === "gzip" && (quality === undefined || Number(quality.trim().slice(2)) > 0);
-    });
-  if (body.byteLength >= 1024 && gzip) {
+  if (body.byteLength >= 1024 && acceptsGzip(request)) {
     body = await gzipBody(body);
     headers.set("Content-Encoding", "gzip");
   }

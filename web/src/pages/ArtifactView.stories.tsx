@@ -397,6 +397,12 @@ export const Html: Story = {
       })),
     },
   },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.findByRole("heading", { name: "Team workspace" })).resolves.toBeVisible();
+    expect(canvasElement.querySelectorAll("[data-preview-fixture]")).toHaveLength(1);
+    expect(canvas.queryByRole("button", { name: "Source" })).not.toBeInTheDocument();
+  },
 };
 export const OldContextLocate: Story = {
   args: {

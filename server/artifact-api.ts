@@ -52,7 +52,7 @@ export function createArtifactApi(
   app.notFound((c) => c.json({ error: "Not found" }, 404));
   installArtifactAuth(app, storage.authentication, policy);
 
-  app.get("/api/sessions", (c) => c.json(artifacts.sessions()));
+  app.get("/api/sessions", (c) => artifactJsonResponse(c.req.raw, artifacts.sessions()));
   app.post("/api/sessions", async (c) =>
     c.json(artifacts.registerSession(await artifactJson(c.req.raw))),
   );

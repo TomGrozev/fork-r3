@@ -198,7 +198,7 @@ try {
   );
   const firstPath = documents.at(-1)!.path;
   assert.equal(documents.at(-1)!.status, 200);
-  assert.equal(runtimes.at(-1), 200);
+  assert.equal(runtimes.length, 0, "the document includes its trusted runtime");
   assert.equal(markdownReads, 1, "only the opened Markdown document is downloaded");
   const card = page.locator('[data-file="index.md"]');
   const paneAt = async (y: number) => {
@@ -248,7 +248,7 @@ try {
   await ready();
   await paneAt(1500);
   assert.deepEqual(documents.at(-1), { path: firstPath, status: 304 });
-  assert.equal(runtimes.at(-1), 304, "the trusted runtime also revalidates its cached bytes");
+  assert.equal(runtimes.length, 0, "document revalidation includes the trusted runtime");
   const beforeRefresh = creations;
   const beforeGate = gates;
   let releaseGate!: () => void;
@@ -305,7 +305,7 @@ try {
   );
   assert.ok(gates > beforeGate, "refresh must still run the browser gate");
   assert.deepEqual(documents.at(-1), { path: firstPath, status: 304 });
-  assert.equal(runtimes.at(-1), 304, "page refresh retains the runtime response");
+  assert.equal(runtimes.length, 0, "page refresh reuses the runtime with the document");
   assert.equal(markdownReads, 1, "refresh and source switches reuse persistent Markdown bytes");
   await card.getByRole("button", { name: "Source", exact: true }).click();
   await card.locator("[data-line]").first().waitFor({ state: "attached" });

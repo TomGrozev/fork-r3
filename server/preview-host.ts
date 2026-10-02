@@ -4,6 +4,7 @@ import { matchesEntityTag } from "./artifact-http.ts";
 import { artifactResourceResponse } from "./artifact-resources.ts";
 import { ArtifactError, requireArtifactPath } from "./artifact-validation.ts";
 import type { ArtifactStore } from "./artifacts.ts";
+import { acceptsGzip, gzipBody } from "./compress.ts";
 import {
   PreviewContexts,
   type PreviewScope,
@@ -84,6 +85,23 @@ export class PreviewHost {
     try {
       const response = await this.respond(request, scope);
       for (const [name, value] of policy) response.headers.set(name, value);
+      // Generated documents/scripts have weak validators and no byte ranges.
+      // Keep native resources on their existing exact-byte/range contract.
+      if (
+        !response.headers.has("accept-ranges") &&
+        /^text\/(html|javascript)\b/.test(response.headers.get("content-type") ?? "")
+      ) {
+        response.headers.append("vary", "Accept-Encoding");
+        if (response.status === 200 && response.body && acceptsGzip(request)) {
+          let body = new Uint8Array(await response.arrayBuffer());
+          if (body.byteLength >= 1024) {
+            body = await gzipBody(body);
+            response.headers.set("content-encoding", "gzip");
+          }
+          response.headers.set("content-length", String(body.byteLength));
+          return new Response(body, { status: response.status, headers: response.headers });
+        }
+      }
       return response;
     } catch (error) {
       policy.set("content-type", "text/plain; charset=utf-8");
@@ -93,6 +111,16 @@ export class PreviewHost {
         { status: error instanceof ArtifactError ? error.status : 500, headers: policy },
       );
     }
+  }
+
+  private runtimeScript(scope: PreviewScope, attributes = ""): string {
+    // Script text is trusted, but literal HTML delimiters in its strings/comments
+    // must not close the element or enter the HTML tokenizer's escaped states.
+    const source = this.support
+      .runtime(scope)
+      .replace(/<\/script/gi, (match) => `<\\/${match.slice(2)}`)
+      .replaceAll("<!--", "<\\!--");
+    return `<script${attributes}>${source}</script>`;
   }
 
   private async respond(request: Request, scope: PreviewScope): Promise<Response> {
@@ -173,7 +201,7 @@ export class PreviewHost {
         .replaceAll("&", "&amp;")
         .replaceAll('"', "&quot;");
       return plain(
-        `<!doctype html><html><meta name="viewport" content="width=device-width, initial-scale=1"><title>Media preview</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#171717}img,video{max-width:100%;max-height:100vh}audio{width:min(90%,40rem)}</style><${tag} src="${src}" ${kind === "image" ? 'alt="Published image"' : 'controls preload="metadata"'}></${tag}><script src="${root}/r3/runtime.js"></script></html>`,
+        `<!doctype html><html><meta name="viewport" content="width=device-width, initial-scale=1"><title>Media preview</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#171717}img,video{max-width:100%;max-height:100vh}audio{width:min(90%,40rem)}</style><${tag} src="${src}" ${kind === "image" ? 'alt="Published image"' : 'controls preload="metadata"'}></${tag}>${this.runtimeScript(scope)}</html>`,
         200,
         { "content-type": "text/html; charset=utf-8" },
       );
@@ -197,7 +225,7 @@ export class PreviewHost {
       ? `W/"${createHash("sha256")
           .update(
             JSON.stringify([
-              "r3-preview-1",
+              "r3-preview-2",
               file.renderedHash ?? file.hash,
               !!file.renderedHash,
               scope.id,
@@ -220,7 +248,7 @@ export class PreviewHost {
       // Markdown bytes arrive from the trusted parent cache after its gate. This
       // empty shell keeps the native document URL and real response policy.
       return plain(
-        `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><script data-r3-markdown data-r3-markdown-shell src="${root}/r3/runtime.js"></script></body></html>`,
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${this.runtimeScript(scope, " data-r3-markdown data-r3-markdown-shell")}</body></html>`,
         200,
         documentHeaders,
       );
@@ -252,7 +280,7 @@ export class PreviewHost {
     let injected = false;
     // Retain the established utility import without rewriting publisher assets.
     const imports = JSON.stringify({ imports: { "/r3/utility.js": `${root}/r3/utility.js` } });
-    const runtime = `<script type="importmap">${imports}</script><script${file.renderedHash ? " data-r3-markdown" : ""} src="${root}/r3/runtime.js"></script>`;
+    const runtime = `<script type="importmap">${imports}</script>${this.runtimeScript(scope)}`;
     return new HTMLRewriter()
       .on("*", {
         element(element) {

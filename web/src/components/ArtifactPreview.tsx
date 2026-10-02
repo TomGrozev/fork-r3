@@ -823,6 +823,12 @@ function PreviewSession(
     documentHeight?.path === props.path && props.markdownPaths.includes(props.path)
       ? documentHeight.height
       : undefined;
+  // Entry-point setup can overlap the manifest. Keep the gate frame mounted
+  // until membership is known, including when verification finishes first.
+  const frameSrc =
+    context && src === context.documentUrl && !props.paths.includes(initialPath)
+      ? context.gateUrl
+      : src;
   const fitMarkdown = props.detail.kind === "files" && !!renderedHash;
   const reading = !error && !!cachedDocument && (!ready || (fitMarkdown && height === undefined));
   const visibleHeight = height ?? (fitMarkdown ? cachedDocument?.height : undefined);
@@ -919,14 +925,14 @@ function PreviewSession(
           onDismiss={() => setNotice("")}
         />
       )}
-      {src && !error && (
+      {frameSrc && !error && (
         <iframe
           // A controlled URL change starts a fresh frame so the verification
           // gate never becomes an extra Back/Forward entry. Native links keep
           // their own history within the mounted published document.
-          key={`${src}:${documentEpoch}`}
+          key={`${frameSrc}:${documentEpoch}`}
           ref={iframe}
-          src={src}
+          src={frameSrc}
           title={`${props.detail.title || "Artifact"} preview`}
           sandbox="allow-scripts"
           {...{ credentialless: "" }}

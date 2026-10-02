@@ -564,3 +564,27 @@ describe("artifact HTTP collaboration contract", () => {
     ).toBe("archived");
   });
 });
+
+test("session lists compress and revalidate after authenticated reads", async () => {
+  for (let i = 0; i < 30; i++)
+    storage.artifacts.registerSession({ id: `session-${i}`, harness: "fixture-agent" });
+  const response = await request("/api/sessions", "GET", undefined, { "accept-encoding": "gzip" });
+  expect(response.headers.get("content-encoding")).toBe("gzip");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const sessions = JSON.parse(new TextDecoder().decode(Bun.gunzipSync(bytes)));
+  expect(sessions).toHaveLength(31);
+  const etag = response.headers.get("etag")!;
+  expect((await request("/api/sessions", "GET", undefined, { "if-none-match": etag })).status).toBe(
+    304,
+  );
+  storage.artifacts.registerSession({ id: "session-later", harness: "fixture-agent" });
+  expect((await request("/api/sessions", "GET", undefined, { "if-none-match": etag })).status).toBe(
+    200,
+  );
+  const denied = await api.app.request(
+    new Request("http://localhost/api/sessions", {
+      headers: { host: "localhost", "if-none-match": etag, "accept-encoding": "gzip" },
+    }),
+  );
+  expect(denied.status).toBe(401);
+});

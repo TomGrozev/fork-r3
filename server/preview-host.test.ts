@@ -182,13 +182,10 @@ test("external HTML contexts retain browser checks, sandbox, membership, and rev
 test("HTML receives the runtime and Markdown receives an isolated empty shell", async () => {
   const document = await read("/files/index.html", { "sec-fetch-dest": "iframe" });
   const body = await document.text();
-  expect(
-    body.replace(
-      /<script type="importmap">.*?<\/script><script src="[^"]+\/r3\/runtime.js"><\/script>/,
-      "",
-    ),
-  ).toBe(html);
-  expect(body.indexOf("/r3/runtime.js")).toBeLessThan(body.indexOf("<head>"));
+  expect(body.replace(/<script type="importmap">.*?<\/script><script>.*?<\/script>/, "")).toBe(
+    html,
+  );
+  expect(body.indexOf("/* r3 runtime fixture */")).toBeLessThan(body.indexOf("<head>"));
   expect(document.headers.get("cache-control")).toBe("private, no-cache");
   expect(document.headers.get("content-security-policy")).toContain(
     "frame-ancestors https://app.example",
@@ -260,7 +257,7 @@ test("cached HTML and Markdown revalidate without blob reads and preserve naviga
       expect(
         (await read(`/files/${path}`, { ...headers, "user-agent": "Different browser" })).status,
       ).toBe(304);
-      expect(reused.headers.get("vary")).toBe("Sec-Fetch-Dest");
+      expect(reused.headers.get("vary")).toBe("Sec-Fetch-Dest, Accept-Encoding");
       expect(
         (await read(`/files/${path}`, { ...headers, "sec-fetch-dest": "document" })).status,
       ).toBe(403);
@@ -282,7 +279,7 @@ test("cached HTML and Markdown revalidate without blob reads and preserve naviga
 
 test("only retained Markdown receives the workspace appearance adapter", async () => {
   const markdown = await read("/files/notes.md", { "sec-fetch-dest": "iframe" });
-  expect(await markdown!.text()).toContain("<script data-r3-markdown data-r3-markdown-shell src=");
+  expect(await markdown!.text()).toContain("<script data-r3-markdown data-r3-markdown-shell>");
   const authored = await read("/files/index.html", { "sec-fetch-dest": "iframe" });
   expect(await authored!.text()).not.toContain("data-r3-markdown");
   const source = await read("/files/notes.md");
@@ -327,7 +324,7 @@ test("preview support revalidates its bytes without bypassing navigation or cont
     expect(reused.headers.get("access-control-allow-origin")).toBe("*");
     expect(reused.headers.get("content-security-policy")).toContain("sandbox allow-scripts");
     expect((await read(path, { ...headers, "user-agent": "Different browser" })).status).toBe(304);
-    expect(reused.headers.get("vary")).toBe("Sec-Fetch-Dest");
+    expect(reused.headers.get("vary")).toBe("Sec-Fetch-Dest, Accept-Encoding");
     expect((await read(path, { ...headers, "sec-fetch-dest": "document" })).status).toBe(403);
     expect((await read(path, { ...headers, "service-worker": "script" })).status).toBe(403);
   }
@@ -338,4 +335,83 @@ test("preview support revalidates its bytes without bypassing navigation or cont
   host.revoke(context.id);
   for (const [path, etag] of validators)
     expect((await read(path, { "if-none-match": etag })).status).toBe(404);
+});
+
+test("generated preview responses negotiate compression without weakening validators or guards", async () => {
+  host.close();
+  host = new PreviewHost(storage.artifacts, "https://preview.example", {
+    runtime: () => "/* runtime fixture */".repeat(100),
+    utility: () => "",
+  });
+  context = host.create(id, 1, "index.html", "https://app.example");
+  for (const path of ["/r3/gate", "/files/index.html", "/files/notes.md", "/r3/runtime.js"]) {
+    const headers = { "sec-fetch-dest": "iframe" };
+    const original = await read(path, headers);
+    const bytes = new Uint8Array(await original.arrayBuffer());
+    const compressed = await read(path, { ...headers, "accept-encoding": "gzip" });
+    const encoded = new Uint8Array(await compressed.arrayBuffer());
+    expect(compressed.headers.get("vary")).toContain("Accept-Encoding");
+    expect(compressed.headers.get("etag")).toBe(original.headers.get("etag"));
+    expect(compressed.headers.get("content-security-policy")).toBe(
+      original.headers.get("content-security-policy"),
+    );
+    expect(compressed.headers.get("connection-allowlist")).toBe(
+      original.headers.get("connection-allowlist"),
+    );
+    expect(compressed.headers.get("content-length")).toBe(String(encoded.length));
+    if (bytes.length >= 1024) {
+      expect(compressed.headers.get("content-encoding")).toBe("gzip");
+      expect(Bun.gunzipSync(encoded)).toEqual(bytes);
+      expect(encoded.length).toBeLessThan(bytes.length);
+    } else {
+      expect(compressed.headers.has("content-encoding")).toBe(false);
+      expect(encoded).toEqual(bytes);
+    }
+    const identity = await read(path, { ...headers, "accept-encoding": "gzip;q=0, br" });
+    expect(identity.headers.has("content-encoding")).toBe(false);
+    expect(new Uint8Array(await identity.arrayBuffer())).toEqual(bytes);
+    const etag = original.headers.get("etag");
+    if (etag) {
+      const reused = await read(path, {
+        ...headers,
+        "accept-encoding": "gzip",
+        "if-none-match": etag,
+      });
+      expect(reused.status).toBe(304);
+      expect(await reused.text()).toBe("");
+      expect(reused.headers.get("vary")).toContain("Accept-Encoding");
+    }
+  }
+  const partial = await read("/files/data.bin", { "accept-encoding": "gzip", range: "bytes=1-2" });
+  expect(partial.status).toBe(206);
+  expect(partial.headers.has("content-encoding")).toBe(false);
+  expect(new Uint8Array(await partial.arrayBuffer())).toEqual(new Uint8Array([255, 128]));
+  host.revoke(context.id);
+  expect((await read("/r3/gate", { "accept-encoding": "gzip" })).status).toBe(404);
+});
+
+test("inline runtime preserves script delimiters as JavaScript data", async () => {
+  host.close();
+  host = new PreviewHost(storage.artifacts, "https://preview.example", {
+    runtime: () => 'window.example = "<!--<script></ScRiPt>";',
+    utility: () => "",
+  });
+  context = host.create(id, 1, "index.html", "https://app.example");
+  const body = await (await read("/files/index.html", { "sec-fetch-dest": "iframe" })).text();
+  const scripts: string[] = [];
+  await new HTMLRewriter()
+    .on("script", {
+      text(chunk) {
+        scripts.push(chunk.text);
+      },
+    })
+    .transform(new Response(body))
+    .text();
+  const source = scripts.join("");
+  expect(source).toContain('window.example = "<\\!--<script><\\/ScRiPt>";');
+  const window: { example?: string } = {};
+  const runtime = /<script>(.*?)<\/script>/s.exec(body)![1];
+  new Function("window", runtime)(window);
+  expect(window.example).toBe("<!--<script></ScRiPt>");
+  expect(body).toContain("<h1>Published page</h1>");
 });

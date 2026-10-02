@@ -131,6 +131,9 @@ principal. No preview cookie is issued or accepted. Gate HTML has no CORS header
 Direct document navigation remains refused and `frame-ancestors` permits only the
 application origin. The workspace must finish browser checks and obtain any required
 network-risk consent before loading interactive publisher content, rather than merely hiding it.
+For an HTML version's declared entrypoint, context setup and the gate can run
+alongside the file manifest; the document waits for both gate success and manifest
+membership before loading.
 Previously opened Markdown has a separate passive reading projection after normal
 application authentication. A template-based allowlist removes resource/navigation
 attributes, scripts, forms, embedded documents, and active SVG. It is displayed only
@@ -231,8 +234,12 @@ context membership, expiry, and navigation guards precede every conditional resp
 A matching validator skips blob reads and HTML rewriting, never authorization.
 Runtime and utility scripts also revalidate privately, with validators covering
 their bytes and response policy after the same context and revocation checks.
-Gate responses remain uncached. The response inserts the r3 runtime before
-publisher scripts without changing original bytes. Retained Markdown instead
+Gate responses remain uncached. The response embeds the r3 runtime inline before
+publisher scripts, escaping HTML script delimiters without changing original stored
+bytes. Document validators include this runtime and its injection revision, so a
+cached response cannot retain a replaced runtime. Generated documents and support
+scripts negotiate gzip and vary on Accept-Encoding; native resource ranges retain
+their exact-byte contract. Retained Markdown instead
 loads an empty, policy-bearing shell at its native URL. The trusted parent owns a
 64 MiB / 30-day IndexedDB cache of retained Markdown, checks its hash against the
 authorized file manifest, and delivers only the current document over its exact

@@ -56,7 +56,12 @@ export function useArtifactContent(
   );
   const path = view.path ?? (version?.kind === "html" ? version.entrypoint : paths[0]) ?? null;
   const file = files?.find((file) => file.path === path);
-  const canRender = !!file && (!!file.renderedHash || file.mediaType.split(";")[0] === "text/html");
+  // The published entrypoint is already authoritative in version metadata.
+  // Start its gate alongside the manifest; PreviewSession still waits for the
+  // manifest before loading bytes or accepting the document's bridge.
+  const canRender =
+    (!!file && (!!file.renderedHash || file.mediaType.split(";")[0] === "text/html")) ||
+    (filesQuery.isPending && version?.kind === "html" && path === version.entrypoint);
   const representation =
     detail.kind === "files" && !view.path
       ? defaultFileRepresentation(path ?? "")

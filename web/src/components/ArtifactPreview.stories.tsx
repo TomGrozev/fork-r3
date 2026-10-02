@@ -178,3 +178,22 @@ export const HtmlExternalConnections: Story = {
     await expect(canvas.getByRole("button", { name: "Restore protection" })).toBeVisible();
   },
 };
+
+export const HtmlOpeningManifest: Story = {
+  args: {
+    detail: { ...artifactFixture, kind: "html" },
+    version: { ...artifactFixtureVersion, kind: "html", entrypoint: "index.html", fileCount: 1 },
+    path: "index.html",
+  },
+  parameters: { queryData: [] },
+  beforeEach: () => {
+    const originalFiles = artifactApi.files;
+    const originalPreview = artifactApi.createPreview;
+    artifactApi.files = () => new Promise(() => {});
+    artifactApi.createPreview = () => new Promise(() => {});
+    return () => {
+      artifactApi.files = originalFiles;
+      artifactApi.createPreview = originalPreview;
+    };
+  },
+};

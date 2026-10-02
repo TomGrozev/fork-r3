@@ -243,6 +243,11 @@ revalidation. Matching validators skip source highlighting or document rewriting
 and blob reads, after membership and access checks. Immutable companion resources
 keep long-lived private HTTP caching. The browser controls cache size and eviction.
 Only normally requested resources are cached; there is no prefetch or offline reader.
+Opening an HTML version's declared entrypoint starts its preview context and
+browser gate alongside the file manifest. Publisher content still waits for both
+checks. The trusted runtime is embedded in the document response before publisher
+scripts, removing a blocking request while preserving execution order. Generated
+preview HTML and scripts use negotiated gzip; their validators cover the runtime.
 
 Protected document context identities are retained per tab so reopened previews
 can reuse their URLs. Every reopening authenticates renewal and repeats the gate;
