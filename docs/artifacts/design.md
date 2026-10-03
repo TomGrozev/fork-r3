@@ -516,7 +516,11 @@ work symmetrically. Exact cross-representation matching is not required.
 Text selection in source, diffs, rendered Markdown, and HTML works outside comment
 mode. Inputs, textareas, selects, and editable regions are excluded. Selection and
 gutter gestures open an unfocused composer, preserving
-native Copy. Space or forward Tab focuses the visible new-note composer at the end;
+native Copy. Source/diff quotes retain every selected line, including trailing
+whitespace and blank lines; native text capture excludes gutters, diff signs, and
+blank-row display placeholders. The server still checks the complete range and
+quote against the selected version's captured bytes and applies its target limits.
+Space or forward Tab focuses the visible new-note composer at the end;
 Shift+Tab, editable fields, keyboard-focused controls, IME, modifiers, and overlays
 retain their own keys. Keyboard text selection shares native capture with a 275 ms
 debounce. Whole-file/general feedback buttons and explicit quote actions focus.

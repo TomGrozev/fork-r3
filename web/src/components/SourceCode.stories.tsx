@@ -36,6 +36,25 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const PublishedHtmlSource: Story = {};
+export const MultilineSelection: Story = {
+  args: {
+    data: {
+      lines: [
+        "First line",
+        "Second line",
+        "",
+        "Fourth line",
+        "Fifth line",
+        "Trailing spaces  ",
+        "",
+      ].map((text, i) => ({
+        lineNo: i + 1,
+        text,
+        html: text,
+      })),
+    },
+  },
+};
 export const LongFile: Story = {
   args: {
     data: {

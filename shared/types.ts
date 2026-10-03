@@ -4,19 +4,6 @@ export * from "./artifacts.ts";
 
 export type DiffSide = "old" | "new";
 
-// Source/diff gestures preserve the full line span and cap only its quoted text.
-// Rendered targets use native DOM/text evidence through the preview protocol.
-export const MAX_QUOTE_LINES = 4;
-
-export function capQuote(raw: string): string {
-  // trimEnd(), not /\s+$/: it strips the same character set, and the regex
-  // backtracks per start offset over a long whitespace run (quadratic on the
-  // mostly-blank selections a client can make).
-  const quote = raw.trimEnd();
-  const lines = quote.split("\n");
-  return lines.length > MAX_QUOTE_LINES ? lines.slice(0, MAX_QUOTE_LINES).join("\n") : quote;
-}
-
 // Maximum captured context rows a client requests at once. Larger gaps expand
 // in successive requests; shared with the server's captured-patch validation.
 export const MAX_CONTEXT_ROWS = 5000;

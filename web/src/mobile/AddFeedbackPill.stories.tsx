@@ -4,8 +4,7 @@ import { fn } from "storybook/test";
 import { AddFeedbackPill } from "./AddFeedbackPill.tsx";
 
 // The pill is selection-driven, so the story is a real selectable code pane: the
-// rows carry the same data-file / data-line / data-side attributes DiffView emits,
-// which is all getSelectionAnchor needs to resolve a selection to an anchor.
+// rows carry the same file/line/side and source-text markers DiffView emits.
 // Select across one or more lines to raise the pill (on a coarse pointer in the
 // app; a mouse drag works here). fn() reports the tap.
 const LINES = [
@@ -38,7 +37,9 @@ function Harness({ composing }: { composing: boolean }) {
               <span className="select-none border-r border-neutral-300/70 px-2 text-right text-neutral-400 dark:border-neutral-700">
                 {n}
               </span>
-              <code className="px-2 whitespace-pre">{text}</code>
+              <code data-source-text className="px-2 whitespace-pre">
+                {text}
+              </code>
             </div>
           ))}
         </div>

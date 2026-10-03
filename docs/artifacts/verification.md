@@ -50,6 +50,7 @@ bun run build
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-artifact-app.ts
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-artifact-reading.ts
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-artifact-selection.ts
+R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-source-feedback.ts
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-artifact-favicon.ts
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-artifact-projects.ts
 R3_TEST_BROWSER="$TEST_CHROMIUM" bun scripts/test-display-preferences.ts
@@ -78,6 +79,7 @@ R3_TEST_BROWSER="$TEST_UNSUPPORTED_CHROMIUM" R3_TEST_UNSUPPORTED=1 bun scripts/t
 | `test-feedback-creation.ts` | Newest-first save, composer-to-card height transition, early event-stream reads and concurrent replies before the POST response, no duplicate cards, failed-save draft retention, retry, reduced motion; shared note/reply drafts across tabs, latest saved edit, reload, discard propagation, and submitted-reply cleanup |
 | `test-artifact-reading.ts` | Computed syntax colors for source/diff in light and dark modes; complete file stacks with progressive hydration; folding, file picking, and scroll-synchronized highlighting; delayed file hydration aligns below the toolbar without stealing newer jumps; on-demand feedback composer, draft handoff guard, and inactive shortcuts in hidden desktop/closed mobile panels; expanded/floating/hidden widths, remembered panel mode, and individual thread drafts with the dock hidden; Escape dismissal, keyboard reopening/general feedback, retained drafts, editor/popup priority, and repeat guards |
 | `test-artifact-selection.ts` | Source/diff and rendered HTML/Markdown selection, unfocused composer, Space/Tab across the opaque frame, idle Escape, keyboard debounce, editable exclusions, quote destination and anchor preservation, native posted Markdown target, and touch action with selection collapse during the tap; comment-mode shortcuts in the workspace and preview, selected-node Space, native posted node targets, and repeat/modifier guards |
+| `test-source-feedback.ts` | Production source/diff line-range gestures through feedback POST and persisted target validation: selections beyond four lines, reverse drags, partial text, blank lines, trailing whitespace, pinned versions, and both diff sides/layouts. Requires `R3_TEST_PLAYWRIGHT` and `R3_TEST_BROWSER` |
 | `test-artifact-favicon.ts` | Agent feedback invalidations add a rendered blue favicon dot; human replies and resolution clear it; navigation restores the ordinary icon and reopening retains unhandled attention |
 | `test-artifact-projects.ts` | Inferred project names, renames, and deletion update an already-open artifact home through committed-write events |
 | `test-display-preferences.ts` | Native site-data denial still boots the complete files workspace; failed preference writes preserve file-panel collapse/resize/reset, font and theme changes, and feedback docking/floating controls without uncaught errors |

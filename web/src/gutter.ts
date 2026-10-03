@@ -2,7 +2,7 @@
 // never crosses files.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { capQuote, type DiffSide, MAX_QUOTE_LINES } from "./types.ts";
+import type { DiffSide } from "./types.ts";
 
 export interface GutterPick {
   side: DiffSide;
@@ -78,23 +78,13 @@ function onGutterMouseUp() {
     const lo = Math.min(a.line, end);
     const hi = Math.max(a.line, end);
     const parts: string[] = [];
-    // Only collect as far as the cap can consume: a drag down a 2000-line file
-    // would otherwise build the whole file's text just to throw all but four
-    // lines away. The stop condition counts SURVIVING lines, not collected ones,
-    // because capQuote trims trailing blanks before it counts — stopping at four
-    // raw lines would hand it "code\n\n\n" and store the one-line quote "code"
-    // where a text selection over the same span keeps four. Blank lines are free
-    // to carry along, so the early exit still holds.
-    let kept = 0;
-    for (let n = lo; n <= hi && kept < MAX_QUOTE_LINES; n++) {
+    // The server validates every quoted line against the complete selected range.
+    for (let n = lo; n <= hi; n++) {
       const t = tf(a.side, n);
       if (t == null) continue;
       parts.push(t);
-      if (t.trim()) kept = parts.length;
     }
-    // Use the same quote cap as native source/diff text selection.
-    // lineStart/lineEnd still carry the full picked span.
-    pick({ side: a.side, lineStart: lo, lineEnd: hi, quote: capQuote(parts.join("\n")) });
+    pick({ side: a.side, lineStart: lo, lineEnd: hi, quote: parts.join("\n") });
     finish();
   }
 }

@@ -30,6 +30,40 @@ type Story = StoryObj<typeof meta>;
 // line-number gutter to fire `onPickLines` (see Actions).
 export const Default: Story = {};
 
+export const MultilineSelection: Story = {
+  args: {
+    rounds: [
+      {
+        seq: 1,
+        files: [
+          {
+            path: "code.txt",
+            oldPath: "code.txt",
+            newPath: "code.txt",
+            status: "modified",
+            binary: false,
+            additions: 8,
+            deletions: 8,
+            lines: (["del", "add"] as const).flatMap((type) =>
+              Array.from({ length: 8 }, (_, i) => {
+                const text =
+                  i === 7 ? "" : `${type === "del" ? "Before" : "After"} line ${i + 1}  `;
+                return {
+                  type,
+                  oldLine: type === "del" ? i + 1 : null,
+                  newLine: type === "add" ? i + 1 : null,
+                  text,
+                  html: text,
+                };
+              }),
+            ),
+          },
+        ],
+      },
+    ],
+  },
+};
+
 // Independent published patches. The navbar owns version selection; this surface
 // displays the selected patch and defaults to the latest when none is specified.
 export const MultiRound: Story = {

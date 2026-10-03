@@ -57,7 +57,12 @@ const LineRow = memo(function LineRow({
       >
         {ln.lineNo}
       </span>
-      <code className="shiki-code px-2 whitespace-pre" dangerouslySetInnerHTML={html} />
+      <code
+        data-source-text
+        data-empty={ln.text === "" || undefined}
+        className="shiki-code px-2 whitespace-pre"
+        dangerouslySetInnerHTML={html}
+      />
     </div>
   );
 });

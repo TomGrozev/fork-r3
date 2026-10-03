@@ -2,7 +2,6 @@
 // handled by the isolated preview runtime and never mapped to source lines.
 
 import type { DiffSide } from "./types.ts";
-import { capQuote } from "./types.ts";
 
 export interface PendingAnchor {
   file: string;
@@ -52,6 +51,39 @@ function pointFrom(node: Node | null): LinePoint | null {
   };
 }
 
+// Read only code within the native range: gutters, diff signs and blank-row
+// placeholders are presentation, not captured source. Join rows explicitly so
+// browser layout does not supply (or omit) the quote's line separators.
+function selectedLines(range: Range, start: LinePoint, endLine: number) {
+  const file = closest(range.startContainer, "data-file");
+  if (!file) return null;
+  const parts: string[] = [];
+  for (const row of file.querySelectorAll<HTMLElement>("[data-line]")) {
+    const line = Number(row.dataset.line);
+    if (row.dataset.side !== start.side || line < start.line || line > endLine) continue;
+    if (line !== start.line + parts.length) return null; // Unmounted or uncaptured gap.
+    const code = row.querySelector<HTMLElement>("[data-source-text]");
+    if (!code) return null;
+    const selected = document.createRange();
+    selected.selectNodeContents(code);
+    if (range.compareBoundaryPoints(Range.START_TO_START, selected) > 0)
+      selected.setStart(range.startContainer, range.startOffset);
+    if (range.compareBoundaryPoints(Range.END_TO_END, selected) < 0)
+      selected.setEnd(range.endContainer, range.endOffset);
+    const text = selected.toString();
+    // An endpoint before the last row's code does not select that row. A selected
+    // blank placeholder has text, but contributes an empty source line below.
+    if (!text && line === endLine && parts.length) {
+      endLine -= 1;
+      break;
+    }
+    parts.push(code.hasAttribute("data-empty") ? "" : text);
+  }
+  if (parts.length !== endLine - start.line + 1) return null;
+  const quote = parts.join("\n");
+  return quote.trim() ? { quote, end: start.line + parts.length - 1 } : null;
+}
+
 export function getSelectionAnchor(scope: HTMLElement): PendingAnchor | null {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
@@ -64,17 +96,9 @@ export function getSelectionAnchor(scope: HTMLElement): PendingAnchor | null {
   // in-view part below.
   if (!scope.contains(range.startContainer) && !scope.contains(range.endContainer)) return null;
 
-  // Side-by-side layout: refuse a range whose endpoints sit in different halves.
-  // The two halves are separate scroll containers, so such a selection's text is
-  // DOM-ordered (the whole left column, then the whole right) — nothing like what
-  // was highlighted — and that text is what the "Quote in note" bubble would
-  // insert verbatim. The clamp below protects the *anchor* (file/side come from
-  // the start, so endLine collapses to it), but not the quote text, so this is a
-  // hard refusal rather than a clamp. CSS blocks the mouse path outright
-  // (main.css, data-selecting); this covers touch long-press, shift+arrow and
-  // Ctrl+A. Scoped to split — in unified there are no halves and the attribute
-  // is absent, so a selection running from a del run into an add run (picking a
-  // whole hunk, very common) keeps working exactly as before.
+  // Split halves are separate scroll containers; a selection spanning both is
+  // DOM-ordered rather than one visual source range. CSS blocks mouse drags
+  // across halves; this also covers touch, keyboard selection, and Select All.
   const startHalf = closest(range.startContainer, "data-split-half");
   const endHalf = closest(range.endContainer, "data-split-half");
   if (startHalf && endHalf && startHalf !== endHalf) return null;
@@ -84,23 +108,19 @@ export function getSelectionAnchor(scope: HTMLElement): PendingAnchor | null {
   const end = pointFrom(range.endContainer);
 
   let endLine = end?.line ?? start.line;
-  // Ending at a row's offset zero does not select that row.
-  if (end && range.endOffset === 0 && endLine > start.line) endLine -= 1;
-
-  let quote = sel.toString();
   // Cross-file, cross-side, and out-of-pane selections cannot mix line numbers.
   if (!end || end.file !== start.file || end.side !== start.side) endLine = start.line;
-
-  const lo = Math.min(start.line, endLine);
-  const hi = Math.max(start.line, endLine);
-
-  // A drag can end in another file or over the panel. Retain only the starting
-  // row's quote when its anchor was clamped above.
-  if (lo === hi) quote = quote.split("\n", 1)[0];
-  if (!quote.trim()) return null;
-  quote = capQuote(quote);
+  const selected = selectedLines(range, start, endLine);
+  if (!selected) return null;
 
   const roundEl = closest(range.startContainer, "data-round");
   const patchSeq = roundEl ? Number(roundEl.getAttribute("data-round")) : null;
-  return { file: start.file, side: start.side, lineStart: lo, lineEnd: hi, quote, patchSeq };
+  return {
+    file: start.file,
+    side: start.side,
+    lineStart: start.line,
+    lineEnd: selected.end,
+    quote: selected.quote,
+    patchSeq,
+  };
 }

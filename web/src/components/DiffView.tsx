@@ -260,7 +260,11 @@ const Row = memo(function Row({
       />
       <code className="shiki-code px-2 whitespace-pre">
         <span className="mr-1 select-none text-neutral-400">{SIGN[ln.type]}</span>
-        <span dangerouslySetInnerHTML={html} />
+        <span
+          data-source-text
+          data-empty={ln.text === "" || undefined}
+          dangerouslySetInnerHTML={html}
+        />
       </code>
     </div>
   );
@@ -427,7 +431,11 @@ const SplitHalfRow = memo(function SplitHalfRow({
       />
       <code className="shiki-code px-2 whitespace-pre">
         <span className="mr-1 select-none text-neutral-400">{SIGN[ln.type]}</span>
-        <span dangerouslySetInnerHTML={html} />
+        <span
+          data-source-text
+          data-empty={ln.text === "" || undefined}
+          dangerouslySetInnerHTML={html}
+        />
       </code>
     </div>
   );
