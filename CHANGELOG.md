@@ -4,6 +4,22 @@ All notable changes to r3 are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-10-03
+
+### Changed
+
+- **We optimized HTML artifact opening performance.** It's about 86% faster in our
+  benchmark compared to the previous version.
+- **Notifications stay in one place.** Successes dismiss automatically; warnings
+  and errors remain. Failed feedback delivery includes recovery guidance and a
+  copyable command.
+
+### Fixed
+
+- **Line-range feedback saves correctly with compact quotes.** Source and diff
+  selections keep their full line range while storing a short excerpt. Agents can
+  retrieve every captured line with `r3 feedback source <feedback-id>`.
+
 ## [1.2.0] - 2026-10-01
 
 ### Added
@@ -543,6 +559,7 @@ and files reviews, anchored feedback with quote-first re-anchoring, replies,
 diff rounds, content snapshots, the watch/submit agent loop, and the
 GitHub/npm release pipeline.
 
+[1.3.0]: https://github.com/hyperlogue/r3/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/hyperlogue/r3/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/hyperlogue/r3/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/hyperlogue/r3/compare/v1.0.0...v1.0.1
