@@ -1,8 +1,9 @@
 import { buildArtifactPrompt, feedbackAttachments } from "../../shared/artifact-prompt.ts";
-import type {
-  ArtifactFeedback,
-  ArtifactReply,
-  ArtifactStreamEvent,
+import {
+  type ArtifactFeedback,
+  type ArtifactReply,
+  type ArtifactStreamEvent,
+  artifactAgentIds,
 } from "../../shared/artifacts.ts";
 import {
   type ArtifactAttachment,
@@ -118,7 +119,13 @@ export const artifactApi: typeof productionApi = {
           (!filters.projectId || item.projectId === filters.projectId),
       ),
     ),
-  detail: async (id) => copy(demo.get(id)),
+  detail: async (id) => {
+    const detail = copy(demo.get(id));
+    detail.agentLabels = Object.fromEntries(
+      artifactAgentIds(detail).map((id) => [id, "Demo agent"]),
+    );
+    return detail;
+  },
   projects: async () => copy(demo.state.projects),
   editProject: async (id, body) => {
     const project =

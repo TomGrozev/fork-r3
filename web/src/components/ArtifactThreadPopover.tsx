@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type {
+  ArtifactDetail,
   ArtifactFeedback,
   ArtifactKind,
   ArtifactMessageContext,
@@ -16,6 +17,7 @@ import {
 // full panel. Its container owns only focus and dismissal, never feedback state.
 export function ArtifactThreadPopover({
   feedback,
+  agentLabels,
   context,
   artifactKind,
   latestVersionSeq,
@@ -25,6 +27,7 @@ export function ArtifactThreadPopover({
   onClose,
 }: {
   feedback: ArtifactFeedback;
+  agentLabels?: ArtifactDetail["agentLabels"];
   context: ArtifactMessageContext;
   artifactKind: ArtifactKind;
   latestVersionSeq: number | null;
@@ -71,6 +74,7 @@ export function ArtifactThreadPopover({
       <div className="min-h-0 overflow-y-auto">
         <ArtifactThreadCard
           feedback={feedback}
+          agentLabels={agentLabels}
           context={context}
           artifactKind={artifactKind}
           latestVersionSeq={latestVersionSeq}

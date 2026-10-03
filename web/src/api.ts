@@ -30,9 +30,11 @@ export const CAN_MANAGE_TOKENS = true;
 // Bootstrap before first render. When the daemon isn't exposed it returns the
 // per-user token (sent as x-r3-token below); when exposed it needs a login-token
 // session and answers 401 `{ needsAuth:true }`, and the caller shows the login screen.
-export async function loadBoot(
-  initial?: ApplicationBootstrap,
-): Promise<{ needsAuth: boolean; artifact?: ArtifactDetail }> {
+export async function loadBoot(initial?: ApplicationBootstrap): Promise<{
+  needsAuth: boolean;
+  artifact?: ArtifactDetail;
+  manifest?: ApplicationBootstrap["manifest"];
+}> {
   if (initial) {
     const suspended = await Promise.all([
       markdownCache.authenticationSuspended(),
@@ -42,7 +44,10 @@ export async function loadBoot(
       TOKEN = initial.boot.token ?? "";
       // The HTML request preceded our cache reads. Never resume a cache from
       // this snapshot: logout may have raced the document or its bundle load.
-      return { needsAuth: false, ...(initial.artifact ? { artifact: initial.artifact } : {}) };
+      return {
+        needsAuth: false,
+        ...(initial.artifact ? { artifact: initial.artifact, manifest: initial.manifest } : {}),
+      };
     }
   }
   const cacheEpoch = await markdownCache.authenticationEpoch();

@@ -140,3 +140,110 @@ test("local bootstrap keeps its origin boundary and non-document assets stay imm
   expect(asset.status).toBe(304);
   expect(asset.headers.get("cache-control")).toContain("immutable");
 });
+
+const agent = (sessionId: string) => ({ role: "agent" as const, sessionId });
+const file = (path: string, text: string) => ({
+  path,
+  mediaType: "text/html",
+  base64: Buffer.from(text).toString("base64"),
+});
+async function publish(
+  seq: number,
+  files = [file("index.html", `Version ${seq}`)],
+  id = artifactId,
+) {
+  return storage.artifacts.publish(id, {
+    actor: { role: "human", sessionId: null },
+    expectedSeq: seq - 1,
+    publicationKey: `version-${seq}`,
+    content: { kind: "html", files },
+  });
+}
+
+test("bootstrap embeds only the selected immutable HTML manifest, with bounded fallback", async () => {
+  await publish(1);
+  await publish(2);
+  const read = (search = "") => api.bootstrap(request(`/${artifactId}${search}`, { cookie }))!;
+  expect(read("?version=1").manifest).toEqual({
+    versionSeq: 1,
+    files: storage.artifacts.files(artifactId, 1),
+  });
+  expect(read().manifest).toEqual({ versionSeq: 2, files: storage.artifacts.files(artifactId, 2) });
+  expect(read("?version=invalid").manifest?.versionSeq).toBe(2);
+  expect(read("?version=99").manifest).toBeNull();
+  await publish(3, [
+    file("index.html", "Large directory"),
+    ...Array.from({ length: 128 }, (_, i) => file(`page-${i}.html`, "Companion")),
+  ]);
+  expect(read().manifest).toBeNull();
+  expect(read("?version=1").manifest?.versionSeq).toBe(1);
+});
+
+test("artifact labels include every referenced role, omit unrelated sessions, and stay current", async () => {
+  for (const id of [
+    "creator",
+    "publisher",
+    "commenter",
+    "reply",
+    "claim",
+    "lifecycle",
+    "unrelated",
+    "__proto__",
+  ])
+    storage.artifacts.registerSession({ id, label: id === "creator" ? title : `Label ${id}` });
+  artifactId = storage.artifacts.create({ kind: "html", actor: agent("creator") }).id;
+  await storage.artifacts.publish(artifactId, {
+    actor: agent("publisher"),
+    expectedSeq: 0,
+    publicationKey: "first",
+    content: { kind: "html", files: [file("index.html", "Preview")] },
+  });
+  const note = await storage.conversations.add(artifactId, {
+    actor: agent("commenter"),
+    body: "Feedback",
+    target: { kind: "artifact" },
+  });
+  await storage.conversations.addReply(note.id, {
+    actor: agent("reply"),
+    body: "Reply",
+    context: { versionSeq: null, representation: null },
+  });
+  await storage.conversations.addReply(note.id, {
+    actor: agent("__proto__"),
+    body: "Another reply",
+    context: { versionSeq: null, representation: null },
+  });
+  storage.lifecycle.transition(artifactId, {
+    actor: agent("lifecycle"),
+    event: "archived",
+    operationKey: "archive",
+  });
+  storage.lifecycle.transition(artifactId, {
+    actor: agent("lifecycle"),
+    event: "restored",
+    operationKey: "restore",
+  });
+  storage.conversations.claim([note.id], "claim");
+  const response = await respond(request(`/${artifactId}`, { cookie }));
+  const html = await response.text();
+  expect(html).not.toContain("<script>window.injected");
+  const labels = snapshot(html)!.artifact!.agentLabels!;
+  expect(Object.keys(labels).sort()).toEqual([
+    "__proto__",
+    "claim",
+    "commenter",
+    "creator",
+    "lifecycle",
+    "publisher",
+    "reply",
+  ]);
+  expect(labels.creator).toBe(title);
+  expect(labels.__proto__).toBe("Label __proto__");
+  storage.artifacts.registerSession({ id: "creator", label: "Updated publisher name" });
+  const detail = await api.app.fetch(request(`/api/artifacts/${artifactId}`, { cookie }));
+  expect((await detail.json()).agentLabels.creator).toBe("Updated publisher name");
+  expect(
+    snapshot(await (await respond(request(`/${artifactId}`, { cookie }))).text())!.artifact!
+      .agentLabels!.creator,
+  ).toBe("Updated publisher name");
+});

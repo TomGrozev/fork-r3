@@ -79,6 +79,10 @@ the same Host/origin checks and browser-session validation as bootstrap. Local
 no-login mode retains its existing bootstrap trust boundary. The embedded detail
 uses the API's complete shape and collaboration state; it seeds the browser query
 cache, while SSE ready/reconnect still reconciles current state in the background.
+The same authenticated snapshot may include the selected HTML version’s bounded
+file manifest. It supplies membership metadata only: context renewal and every
+browser verification check still precede publisher document loading. Agent labels
+are limited to sessions referenced by the artifact and carry no credentials.
 Application documents are `private, no-store`, have no reusable validator, and
 escape `<` in embedded JSON. Static bundles retain immutable caching. Remote
 snapshots contain no API token. Cross-site/opaque requests and missing or revoked

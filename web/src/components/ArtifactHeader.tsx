@@ -448,7 +448,7 @@ export function ArtifactHeader({
             </CopyMeta>
             {detail.createdBy.role === "agent" && (
               <CopyMeta hint="Copy publisher session" value={detail.createdBy.sessionId}>
-                Publisher: <AgentName id={detail.createdBy.sessionId} />
+                Publisher: <AgentName id={detail.createdBy.sessionId} labels={detail.agentLabels} />
               </CopyMeta>
             )}
             {Object.entries(detail.meta).map(([key, value]) => (

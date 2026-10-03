@@ -32,6 +32,10 @@ The CLI, browser, and demo all use this protocol; legacy routes are removed.
   `remoteUrl` hint for server-configured project inference; explicit `projectId`,
   including null, wins. List filters are `state`,
   `kind`, `project`, and `meta.<key>`. No repo header or local path is involved.
+  Artifact detail includes `agentLabels`, current display labels keyed by the
+  sessions referenced in its creator, versions, feedback, replies, claims, and
+  lifecycle events. Unnamed entries are null; unrelated sessions are omitted.
+  The browser uses these labels without fetching the global session list.
   Artifact reads include computed `unhandledCount`: open threads whose latest
   message is from an agent. Reading, delivery, and claims do not clear it.
   `storage.totalBytes` and `storage.latestVersionBytes` report deduplicated published
@@ -143,6 +147,9 @@ atomically clears durable records; restore requires a new publication/registrati
   supplies local bootstrap or required-login state. Both remain Host/origin gated.
   Authenticated application HTML may inline that bootstrap plus the current
   `ArtifactDetail`, using the same contracts to seed the initial workspace.
+  For HTML artifacts it also embeds the selected version’s immutable file manifest
+  when at most 128 files and 64 KiB of JSON. Larger manifests use the parallel API
+  read. Unknown explicit versions never substitute the latest version.
   These documents are private/no-store; cross-site entry, absent session cookies,
   and suspended browser caches fall back to `/api/boot`. API checks remain on
   every data request, and SSE ready still triggers background reconciliation.

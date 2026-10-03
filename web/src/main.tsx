@@ -8,7 +8,6 @@ import { takeApplicationBootstrap } from "./application-bootstrap.ts";
 import { Login } from "./components/Login.tsx";
 import { readDisplayPreference } from "./display-storage.ts";
 import { clampFont } from "./settings.ts";
-import type { ArtifactDetail } from "./types.ts";
 import "./main.css";
 
 // Restore the saved theme before first paint.
@@ -28,7 +27,7 @@ if (Number.isFinite(savedFont) && savedFont > 0) {
 // Establish auth before rendering. An authenticated shell carries bootstrap and
 // its artifact detail; cross-site entry and suspended caches use a fresh read.
 async function main() {
-  let boot: { needsAuth: boolean; artifact?: ArtifactDetail };
+  let boot: Awaited<ReturnType<typeof loadBoot>>;
   try {
     boot = await loadBoot(takeApplicationBootstrap());
   } catch (err) {
@@ -69,6 +68,11 @@ async function main() {
     },
   });
   if (boot.artifact) queryClient.setQueryData(["artifact", boot.artifact.id], boot.artifact);
+  if (boot.artifact && boot.manifest)
+    queryClient.setQueryData(
+      ["artifact-files", boot.artifact.id, boot.manifest.versionSeq],
+      boot.manifest.files,
+    );
 
   root.render(
     <StrictMode>

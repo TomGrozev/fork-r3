@@ -54,21 +54,11 @@ export const HtmlCapture: Story = {
 };
 export const HtmlCaptureDark: Story = { ...HtmlCapture, globals: { theme: "dark" } };
 export const NamedPublisher: Story = {
-  parameters: {
-    queryData: [
-      [["artifact-watchers", artifactFixture.id], []],
-      [
-        ["agent-sessions"],
-        [
-          {
-            id: artifactFixture.createdBy.sessionId,
-            label: "Design assistant",
-            harness: "codex",
-            createdAt: "2026-01-01T00:00:00Z",
-          },
-        ],
-      ],
-    ],
+  args: {
+    detail: {
+      ...artifactFixture,
+      agentLabels: { [artifactFixture.createdBy.sessionId!]: "Design assistant" },
+    },
   },
 };
 export const EditTitle: Story = {

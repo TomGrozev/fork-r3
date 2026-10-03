@@ -207,6 +207,26 @@ export interface ArtifactDetail extends Artifact {
   feedback: ArtifactFeedback[];
   placements: ArtifactPlacement[];
   events: ArtifactLifecycleEvent[];
+  // Current labels only for sessions referenced by this artifact. Older saved
+  // client snapshots may omit these; absent/unnamed entries display their ID.
+  agentLabels?: Record<string, string | null>;
+}
+
+export function artifactAgentIds(detail: ArtifactDetail): string[] {
+  return [
+    ...new Set(
+      [
+        detail.createdBy.sessionId,
+        ...detail.versions.map((version) => version.publishedBy.sessionId),
+        ...detail.events.map((event) => event.actor.sessionId),
+        ...detail.feedback.flatMap((feedback) => [
+          feedback.author.sessionId,
+          feedback.claim?.sessionId,
+          ...feedback.replies.map((reply) => reply.author.sessionId),
+        ]),
+      ].filter((id): id is string => typeof id === "string"),
+    ),
+  ].sort();
 }
 
 export interface CreateArtifactBody {

@@ -147,6 +147,7 @@ function FeedbackQuote({ quote }: { quote: string }) {
 
 export const ArtifactThreadCard = memo(function ArtifactThreadCard({
   feedback,
+  agentLabels,
   context,
   artifactKind,
   latestVersionSeq,
@@ -157,6 +158,7 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
   onResolved,
 }: {
   feedback: ArtifactFeedback;
+  agentLabels?: ArtifactDetail["agentLabels"];
   context: ArtifactMessageContext;
   artifactKind: ArtifactKind;
   latestVersionSeq: number | null;
@@ -447,7 +449,7 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
               className="relative z-20 rounded bg-primary-500/15 px-1.5 py-0.5 text-primary-700 dark:text-primary-300"
               title={`Working agent: ${feedback.claim.sessionId}`}
             >
-              Working · <AgentName id={feedback.claim.sessionId} />
+              Working · <AgentName id={feedback.claim.sessionId} labels={agentLabels} />
             </span>
           )}
         </div>
@@ -470,7 +472,7 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
       >
         {feedback.author.role === "agent" && (
           <div className="mb-1 text-xs text-neutral-500" title={feedback.author.sessionId}>
-            Agent · <AgentName id={feedback.author.sessionId} />
+            Agent · <AgentName id={feedback.author.sessionId} labels={agentLabels} />
           </div>
         )}
         {editing && !editing.replyId ? (
@@ -507,7 +509,7 @@ export const ArtifactThreadCard = memo(function ArtifactThreadCard({
         >
           {reply.author.role === "agent" && (
             <div className="mb-1 text-xs text-neutral-500" title={reply.author.sessionId}>
-              Agent · <AgentName id={reply.author.sessionId} />
+              Agent · <AgentName id={reply.author.sessionId} labels={agentLabels} />
             </div>
           )}
           {editing?.replyId === reply.id ? (
@@ -936,6 +938,7 @@ export function ArtifactThreads({
                   <ArtifactThreadCard
                     key={feedback.id}
                     feedback={feedback}
+                    agentLabels={detail.agentLabels}
                     context={context}
                     artifactKind={detail.kind}
                     latestVersionSeq={detail.versions.at(-1)?.seq ?? null}

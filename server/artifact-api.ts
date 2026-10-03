@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { parse as parseCookie } from "hono/utils/cookie";
-import type { ArtifactDetail, ArtifactKind, ArtifactState } from "../shared/artifacts.ts";
+import {
+  type ArtifactDetail,
+  type ArtifactKind,
+  type ArtifactState,
+  artifactAgentIds,
+} from "../shared/artifacts.ts";
 import type { ApplicationBootstrap } from "../shared/types.ts";
 import {
   type ArtifactAuthPolicy,
@@ -22,13 +27,15 @@ import { renderStoredPatch, storedPatchContext } from "./patch-content.ts";
 import type { PreviewHost } from "./preview-host.ts";
 
 export function artifactDetail(storage: ArtifactStorage, id: string): ArtifactDetail {
-  return {
+  const detail: ArtifactDetail = {
     ...storage.artifacts.get(id),
     versions: storage.artifacts.versions(id),
     feedback: storage.conversations.list(id),
     placements: storage.conversations.placements(id),
     events: storage.lifecycle.events(id),
   };
+  detail.agentLabels = storage.artifacts.sessionLabels(artifactAgentIds(detail));
+  return detail;
 }
 
 export function artifactSequence(value: string | undefined): number {
@@ -76,7 +83,24 @@ export function createArtifactApi(
         if (!(error instanceof ArtifactError) || error.status !== 404) throw error;
       }
     }
-    return { path, boot, artifact };
+    let manifest: ApplicationBootstrap["manifest"] = null;
+    if (artifact?.kind === "html") {
+      const selected = new URL(request.url).searchParams.get("version");
+      const seq =
+        selected && /^[1-9]\d*$/.test(selected) && Number.isSafeInteger(Number(selected))
+          ? Number(selected)
+          : null;
+      const version =
+        seq === null ? artifact.versions.at(-1) : artifact.versions.find((v) => v.seq === seq);
+      // Bound the extra shell payload. Larger manifests keep the existing
+      // parallel API path; unknown explicit versions must never seed latest.
+      if (version?.kind === "html" && version.fileCount <= 128) {
+        const files = artifacts.files(artifact.id, version.seq);
+        if (Buffer.byteLength(JSON.stringify(files)) <= 64 * 1024)
+          manifest = { versionSeq: version.seq, files };
+      }
+    }
+    return { path, boot, artifact, manifest };
   };
   app.onError((error, c) =>
     error instanceof ArtifactError

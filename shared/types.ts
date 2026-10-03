@@ -135,6 +135,7 @@ export interface ApplicationBootstrap {
   path: string;
   boot: BootResponse;
   artifact: import("./artifacts.ts").ArtifactDetail | null;
+  manifest?: { versionSeq: number; files: import("./artifacts.ts").ArtifactFile[] } | null;
 }
 
 // A login token's metadata (GET /api/auth/tokens, `r3 auth list-tokens`). The token

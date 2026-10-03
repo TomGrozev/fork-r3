@@ -55,19 +55,16 @@ export const FeedbackCommand: Story = {
   },
 };
 export const NamedFallback: Story = {
+  args: {
+    detail: {
+      ...artifactFixture,
+      agentLabels: {
+        [artifactFixtureFeedback.replies[0].author.sessionId!]: "Design assistant",
+      },
+    },
+  },
   parameters: {
     queryData: [
-      [
-        ["agent-sessions"],
-        [
-          {
-            id: artifactFixtureFeedback.replies[0].author.sessionId,
-            label: "Design assistant",
-            harness: "codex",
-            createdAt: "2026-01-01T00:00:00Z",
-          },
-        ],
-      ],
       [
         ["artifact-watchers", artifactFixture.id],
         [

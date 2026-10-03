@@ -21,7 +21,8 @@ const controllerBuild = await Bun.build({
 if (!controllerBuild.success) throw new Error("Authentication controller build failed");
 const root = await mkdtemp(join(tmpdir(), "r3-application-startup-"));
 const storage = await openArtifactStorage({ databasePath: join(root, "store.sqlite") });
-const actor = { role: "human" as const, sessionId: null };
+const actor = { role: "agent" as const, sessionId: "startup-publisher" };
+storage.artifacts.registerSession({ id: actor.sessionId, label: "Startup publisher" });
 const artifact = storage.artifacts.create({
   kind: "html",
   actor,
@@ -146,6 +147,16 @@ try {
     "HTML supplies bootstrap",
   );
   assert.equal(
+    trace.some((r) => r.path === "/api/sessions"),
+    false,
+    "artifact labels arrive with the detail",
+  );
+  assert.equal(
+    trace.some((r) => r.path.endsWith("/files")),
+    false,
+    "HTML supplies the selected version manifest",
+  );
+  assert.equal(
     trace.some((r) => r.path === "/api/theme-style"),
     false,
     "HTML needs no source palette",
@@ -159,15 +170,23 @@ try {
     false,
     "embedded detail must open the workspace before an API detail read completes",
   );
-  const manifest = trace.find((r) => r.path.endsWith("/files"))!;
-  const renewal = trace.find((r) => r.path.startsWith("/api/previews/"))!;
   const check = trace.find((r) => r.path.endsWith("/r3/check"))!;
   const content = trace.find((r) => r.path.endsWith("/files/index.html"))!;
-  assert.ok(renewal.at < manifest.end!);
   assert.ok(
-    content.at >= manifest.end! && content.at >= check.end!,
-    "published bytes wait for membership and successful verification",
+    content.at >= check.end!,
+    "embedded membership does not bypass successful verification",
   );
+  await page.getByRole("button", { name: "Artifact details and actions" }).click();
+  await page
+    .getByRole("dialog", { name: "Artifact details" })
+    .locator("summary")
+    .getByText("Details", { exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Artifact details" })
+    .getByText("Startup publisher")
+    .waitFor();
+  await page.keyboard.press("Escape");
   console.log(
     JSON.stringify({
       visibleMs,

@@ -37,16 +37,9 @@ export function useArtifactEvents(): boolean {
               void markdownCache.reconcile(async () =>
                 (await artifactApi.list()).map((artifact) => artifact.id),
               );
-              for (const key of [
-                "artifacts",
-                "artifact",
-                "artifact-watchers",
-                "artifact-projects",
-                "agent-sessions",
-              ])
+              for (const key of ["artifacts", "artifact", "artifact-watchers", "artifact-projects"])
                 void queryClient.invalidateQueries({ queryKey: [key] });
             } else {
-              void queryClient.invalidateQueries({ queryKey: ["agent-sessions"] });
               if (event.type === "artifact-updated")
                 void queryClient.invalidateQueries({ queryKey: ["artifact-projects"] });
               if (event.type === "artifact-deleted") {

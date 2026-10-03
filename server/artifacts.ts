@@ -172,6 +172,13 @@ export class ArtifactStore {
       .all();
   }
 
+  sessionLabels(ids: string[]): Record<string, string | null> {
+    const query = this.db.query<{ label: string | null }, [string]>(
+      "SELECT label FROM agent_sessions WHERE id = ?",
+    );
+    return Object.fromEntries(ids.map((id) => [id, query.get(id)?.label ?? null]));
+  }
+
   projects(): ArtifactProject[] {
     return this.projectStore.list();
   }

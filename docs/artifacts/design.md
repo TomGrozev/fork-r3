@@ -222,7 +222,12 @@ publisher scripts, images, network requests, links, and feedback actions are abs
 The normal interactive document replaces it once the gate and layout are ready.
 There is no additional login check and no display before application bootstrap.
 Authenticated application HTML carries bootstrap and the addressed artifact's
-detail, so the workspace can start without two serial API round trips. The shell
+detail, so the workspace can start without two serial API round trips. Detail
+includes current labels for referenced agent sessions, eliminating the global
+session-list request for attribution. For HTML artifacts the shell also carries
+the selected version’s immutable file manifest, bounded to 128 files and 64 KiB
+of JSON; larger manifests retain their parallel API read. This metadata does not
+authorize publisher execution before successful browser verification. The shell
 uses private/no-store responses with escaped JSON; static bundles remain cached.
 Cross-site entry falls back to same-origin bootstrap. Inline snapshots never
 resume suspended caches: those use fresh bootstrap with the existing epoch guards.
