@@ -277,7 +277,8 @@ export class MarkdownCache {
         Boolean(await request(tx.objectStore("state").get("suspended"))),
       );
     } catch {
-      return false;
+      // Unreadable logout state cannot authorize an older HTML snapshot.
+      return true;
     }
   }
   async authenticationEpoch(): Promise<number | null> {

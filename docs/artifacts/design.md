@@ -231,6 +231,8 @@ authorize publisher execution without browser verification or remembered risk
 consent. The shell uses private/no-store responses with escaped JSON; static bundles remain cached.
 Cross-site entry falls back to same-origin bootstrap. Inline snapshots never
 resume suspended caches: those use fresh bootstrap with the existing epoch guards.
+Unreadable cache/logout state also requires fresh bootstrap, so unavailable browser
+storage cannot admit an older HTML response after logout.
 For the selected HTML entrypoint, the same authenticated GET can renew an existing
 preview context, keeping its URL while removing the initial renewal round trip.
 A bounded application cookie carries non-authorizing lookup hints; only after

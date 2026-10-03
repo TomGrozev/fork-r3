@@ -317,79 +317,89 @@ try {
   );
 
   // Hold HTML after it captured a valid session, then log out in another tab.
-  // Its stale inline snapshot must not resume either persistent cache.
+  // Unreadable storage must also reject the snapshot and use fresh authentication.
   const controller = await context.newPage();
   await controller.goto(`${base}/controller`);
-  await page.goto("about:blank");
-  trace.length = 0;
-  let releaseDocument!: () => void;
-  documentHold = new Promise((resolve) => {
-    releaseDocument = resolve;
-  });
-  const captured = new Promise<void>((resolve) => {
-    documentCaptured = resolve;
-  });
-  const pendingNavigation = page.goto(url);
-  await captured;
-  await controller.evaluate(async () => {
-    const path = "/controller.js";
-    const { api } = await import(path);
-    await api.logout();
-  });
-  releaseDocument();
-  documentHold = null;
-  await pendingNavigation;
-  await page.getByRole("heading", { name: "Sign in", exact: true }).waitFor();
-  assert.ok(
-    trace.some((r) => r.path === "/api/boot"),
-    "logout suspension forces fresh auth",
-  );
-  assert.equal(
-    trace.some((r) => r.path.includes("/__r3_preview/")),
-    false,
-    "stale HTML must not open publisher content after logout",
-  );
-  const suspended = await controller.evaluate(async () => {
-    const read = (name: string) =>
-      new Promise<boolean>((resolve, reject) => {
-        const opening = indexedDB.open(name);
-        opening.onsuccess = () => {
-          const db = opening.result;
-          const req = db.transaction("state").objectStore("state").get("suspended");
-          req.onsuccess = () => {
-            db.close();
-            resolve(Boolean(req.result));
-          };
-          req.onerror = () => reject(req.error);
-        };
-        opening.onerror = () => reject(opening.error);
+  for (const storageUnavailable of [false, true]) {
+    if (storageUnavailable)
+      await page.addInitScript(() => {
+        Object.defineProperty(window, "indexedDB", {
+          get() {
+            throw new Error("Storage unavailable for this document");
+          },
+        });
       });
-    return Promise.all([read("r3-markdown-cache-1:/"), read("r3-draft-images")]);
-  });
-  assert.deepEqual(suspended, [true, true]);
-  await controller.evaluate(async (token: string) => {
-    const path = "/controller.js";
-    const { api } = await import(path);
-    await api.login(token);
-  }, login.token);
-  trace.length = 0;
-  await page.goto(url);
-  await ready();
-  assert.ok(
-    trace.some((r) => r.path === "/api/boot"),
-    "fresh login resumes caches through a current authenticated read",
-  );
-  await page.goto("about:blank");
-  trace.length = 0;
-  await page.goto(url);
-  await ready();
-  assert.equal(
-    trace.some((r) => r.path === "/api/boot"),
-    false,
-    "subsequent same-site opening uses inline bootstrap again",
-  );
+    await page.goto("about:blank");
+    trace.length = 0;
+    let releaseDocument!: () => void;
+    documentHold = new Promise((resolve) => {
+      releaseDocument = resolve;
+    });
+    const captured = new Promise<void>((resolve) => {
+      documentCaptured = resolve;
+    });
+    const pendingNavigation = page.goto(url);
+    await captured;
+    await controller.evaluate(async () => {
+      const path = "/controller.js";
+      const { api } = await import(path);
+      await api.logout();
+    });
+    releaseDocument();
+    documentHold = null;
+    await pendingNavigation;
+    await page.getByRole("heading", { name: "Sign in", exact: true }).waitFor({ timeout: 5000 });
+    assert.ok(
+      trace.some((r) => r.path === "/api/boot"),
+      "logout suspension forces fresh auth",
+    );
+    assert.equal(
+      trace.some((r) => r.path.includes("/__r3_preview/")),
+      false,
+      "stale HTML must not open publisher content after logout",
+    );
+    const suspended = await controller.evaluate(async () => {
+      const read = (name: string) =>
+        new Promise<boolean>((resolve, reject) => {
+          const opening = indexedDB.open(name);
+          opening.onsuccess = () => {
+            const db = opening.result;
+            const req = db.transaction("state").objectStore("state").get("suspended");
+            req.onsuccess = () => {
+              db.close();
+              resolve(Boolean(req.result));
+            };
+            req.onerror = () => reject(req.error);
+          };
+          opening.onerror = () => reject(opening.error);
+        });
+      return Promise.all([read("r3-markdown-cache-1:/"), read("r3-draft-images")]);
+    });
+    assert.deepEqual(suspended, [true, true]);
+    await controller.evaluate(async (token: string) => {
+      const path = "/controller.js";
+      const { api } = await import(path);
+      await api.login(token);
+    }, login.token);
+    trace.length = 0;
+    await page.goto(url);
+    await ready();
+    assert.ok(
+      trace.some((r) => r.path === "/api/boot"),
+      "fresh login resumes caches through a current authenticated read",
+    );
+    await page.goto("about:blank");
+    trace.length = 0;
+    await page.goto(url);
+    await ready();
+    assert.equal(
+      trace.some((r) => r.path === "/api/boot"),
+      storageUnavailable,
+      "inline bootstrap requires readable logout state; unavailable storage uses fresh auth",
+    );
+  }
   console.log(
-    "Application startup: stable preview URL and conditional revalidation, zero setup request, missing-hint renewal, independent tabs, origin fallback, Strict-cookie entry, logout race, and cache resumption passed",
+    "Application startup: stable preview URL and conditional revalidation, zero setup request, missing-hint renewal, independent tabs, origin fallback, Strict-cookie entry, logout races with working/unavailable storage, and cache resumption passed",
   );
 } finally {
   await browser.close();

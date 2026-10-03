@@ -99,8 +99,10 @@ sessions receive only the generic shell, followed by same-origin `/api/boot`.
 This preserves Strict-cookie entry without widening cookie policy or API access.
 
 An HTML snapshot must never resume suspended Markdown/image caches: its request
-predates the browser's cache-generation read. If either cache is suspended, discard
-the snapshot and authenticate through `/api/boot` with the existing epoch guards.
+predates the browser's cache-generation read. If either cache is suspended or its
+logout state cannot be read, discard the snapshot and authenticate through
+`/api/boot` with the existing epoch guards. Storage failure loses only the inline
+authentication optimization; a current successful bootstrap still opens the app.
 Otherwise inline bootstrap leaves cache suspension state untouched. A document
 restored from the back/forward cache reloads rather than reusing its auth snapshot.
 

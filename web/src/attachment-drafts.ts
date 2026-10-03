@@ -92,7 +92,8 @@ export class DraftImageStore {
       );
       return this.suspended || Boolean(suspended);
     } catch {
-      return this.suspended;
+      // Unreadable logout state cannot authorize an older HTML snapshot.
+      return true;
     }
   }
   async put(
