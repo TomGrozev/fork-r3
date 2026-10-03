@@ -61,6 +61,9 @@ export function installArtifactConversations(
     return c.json(feedback, 201);
   });
   app.get("/api/feedback/:id", (c) => c.json(conversations.get(c.req.param("id"))));
+  app.get("/api/feedback/:id/source", async (c) =>
+    artifactJsonResponse(c.req.raw, await conversations.source(c.req.param("id"))),
+  );
   app.patch("/api/feedback/:id", async (c) => {
     const feedback = await conversations.update(
       c.req.param("id"),

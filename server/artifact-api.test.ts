@@ -187,6 +187,25 @@ describe("artifact HTTP content contract", () => {
     }
   });
 
+  test("full feedback source remains behind authentication and origin guards", async () => {
+    const id = await create();
+    await request(`/api/artifacts/${id}/versions`, "POST", publication());
+    const source = storage.artifacts.files(id, 1)[0];
+    const note = await storage.conversations.add(id, {
+      actor: { role: "human", sessionId: null },
+      body: "Read this",
+      target: { kind: "source", versionSeq: 1, path: source.path, locator: null },
+    });
+    const path = `/api/feedback/${note.id}/source`;
+    const denied = await api.app.request(
+      new Request(`http://localhost${path}`, { headers: { host: "localhost" } }),
+    );
+    expect(denied.status).toBe(401);
+    expect((await request(path, "GET", undefined, { origin: "null" })).status).toBe(403);
+    expect((await request(path)).status).toBe(400); // Whole-file targets do not invent a range.
+    expect((await request("/api/feedback/missing/source")).status).toBe(404);
+  });
+
   test("authenticated preview grants bind the application origin and revoke with the artifact", async () => {
     const id = await create();
     await request(`/api/artifacts/${id}/versions`, "POST", publication());

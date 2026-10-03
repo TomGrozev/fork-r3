@@ -69,6 +69,11 @@ function block(feedback: ArtifactFeedback, unsent: boolean): string {
       `Legacy anchor evidence: ${JSON.stringify({ file: evidence.file, side: evidence.side, lineStart: evidence.line_start, lineEnd: evidence.line_end, quote: evidence.quote, patchSeq: evidence.patch_seq })}`,
     );
   } else lines.push(`Original target: ${JSON.stringify(feedback.target)}`);
+  if (
+    (feedback.target.kind === "source" || feedback.target.kind === "diff") &&
+    feedback.target.locator
+  )
+    lines.push(`Full captured range: r3 feedback source ${feedback.id}`);
   if (feedback.claim) lines.push(`Working agent: ${feedback.claim.sessionId}`);
   if (!followup) {
     lines.push("", feedback.body);

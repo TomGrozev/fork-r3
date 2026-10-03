@@ -34,6 +34,8 @@ const lines = [
   "Trailing whitespace  ",
   "",
   "Last line",
+  "a".repeat(5000),
+  "After the long line",
 ];
 await storage.artifacts.publish(artifact.id, {
   actor,
@@ -85,8 +87,9 @@ await storage.artifacts.publish(artifact.id, {
     ],
   },
 });
+const token = randomBytes(32).toString("base64url");
 const api = createArtifactApi(storage, {
-  token: randomBytes(32).toString("base64url"),
+  token,
   requireLogin: false,
   version: "acceptance",
   allowedHost: (host) => host === "localhost",
@@ -117,6 +120,7 @@ try {
     startOffset?: number;
     endOffset?: number;
     backward?: boolean;
+    quote?: string;
   }[] = [
     { kind: "source", gesture: "gutter", start: 7, end: 13 },
     { kind: "source", gesture: "gutter", start: 13, end: 7 },
@@ -130,6 +134,10 @@ try {
     { kind: "source", gesture: "text", start: 7, end: 13, startOffset: 5, endOffset: 17 },
     { kind: "source", gesture: "text", start: 7, end: 14, endOffset: 0 },
     { kind: "source", gesture: "text", start: 7, end: 13, backward: true },
+    { kind: "source", gesture: "gutter", start: 14, end: 17 },
+    { kind: "source", gesture: "text", start: 14, end: 17 },
+    { kind: "source", gesture: "gutter", start: 18, end: 19, quote: "a".repeat(2048) },
+    { kind: "source", gesture: "text", start: 18, end: 19, quote: "a".repeat(2048) },
     { kind: "diff", gesture: "gutter", start: 8, end: 1, side: "old", layout: "split" },
     { kind: "diff", gesture: "text", start: 1, end: 8, side: "old", layout: "split" },
     {
@@ -250,12 +258,19 @@ try {
       ...(isDiff ? { side } : {}),
       start,
       end,
-      quote: selected.join("\n"),
+      quote: scenario.quote ?? selected.slice(0, 4).join("\n").trim(),
     });
+    const read = await fetch(`http://localhost:${app.port}/api/feedback/${note.id}/source`, {
+      headers: { "x-r3-token": token },
+    });
+    assert.equal(read.status, 200);
+    const fullRange = await read.json();
+    assert.equal(fullRange.text, source.slice(start - 1, end).join("\n"));
+    assert.equal(storage.conversations.get(note.id).sentAt, null);
     await page.close();
   }
   console.log(
-    "Source/diff range feedback: full selected ranges submit with matching captured evidence.",
+    "Source/diff feedback: compact excerpts retain full ranges, retrievable without acknowledgment.",
   );
 } finally {
   await browser.close();

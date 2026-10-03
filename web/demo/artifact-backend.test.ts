@@ -1,6 +1,30 @@
 import { expect, test } from "bun:test";
 import { ArtifactDemoBackend } from "./artifact-backend.ts";
 
+test("demo diff excerpts retain and retrieve the complete native range", () => {
+  const backend = new ArtifactDemoBackend();
+  try {
+    const artifact = backend.state.artifacts.find((item) => item.kind === "diff")!;
+    const file = backend
+      .publication(artifact.id, 1)
+      .fullDiff.find((file) => file.lines.some((row) => row.newLine === 1))!;
+    const rows = file.lines.filter((row) => row.newLine !== null).slice(0, 5);
+    const start = rows[0].newLine!;
+    const end = rows.at(-1)!.newLine!;
+    const quote = rows.find((row) => row.text.trim())!.text;
+    const note = backend.addFeedback(artifact.id, "Full range", {
+      kind: "diff",
+      versionSeq: 1,
+      path: file.path,
+      locator: { side: "new", start, end, quote },
+    });
+    expect(backend.feedbackSource(note.id).text).toBe(rows.map((row) => row.text).join("\n"));
+    expect(backend.note(note.id).note.sentAt).toBeNull();
+  } finally {
+    backend.close();
+  }
+});
+
 test("demo targets match their published source and diff, and reads retain prior versions", async () => {
   const backend = new ArtifactDemoBackend();
   try {

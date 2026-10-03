@@ -14,6 +14,7 @@ import type {
   ArtifactLifecycleResponse,
   ArtifactMessageContext,
   ArtifactSource,
+  ArtifactSourceRange,
   ArtifactTarget,
   ArtifactVersion,
   ArtifactWatchResult,
@@ -112,7 +113,7 @@ export async function runArtifactCommand(
   ctx: ArtifactCommandContext,
 ): Promise<number> {
   const args = new ArtifactArgs(argv);
-  if (command === "feedback" && ["fetch", "image"].includes(args.positional[0]!)) {
+  if (command === "feedback" && ["fetch", "image", "source"].includes(args.positional[0]!)) {
     command = `feedback ${args.positional.shift()}`;
   }
   const captureFlags = [
@@ -167,6 +168,7 @@ export async function runArtifactCommand(
     release: [],
     "feedback fetch": ["all", "feedback", "attachments-dir"],
     "feedback image": ["image", "output"],
+    "feedback source": [],
     watch: ["timeout"],
     listen: ["foreground"],
     unlisten: [],
@@ -321,6 +323,17 @@ export async function runArtifactCommand(
         await client.json("GET", `${artifactApiPath(args.id())}/versions/${args.sequence()}/files`),
       );
       return 0;
+    case "feedback source": {
+      const source = await client.json<ArtifactSourceRange>(
+        "GET",
+        `${feedbackApiPath(args.id())}/source`,
+      );
+      if (args.has("json")) await print(source);
+      else
+        for (const [index, line] of source.text.split("\n").entries())
+          await print(`${source.start + index}\t${line}`);
+      return 0;
+    }
     case "source": {
       const source = await client.json<ArtifactSource>(
         "GET",

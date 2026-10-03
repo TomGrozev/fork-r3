@@ -1,6 +1,7 @@
 import type {
   ArtifactKind,
   ArtifactMessageContext,
+  ArtifactSourceRange,
   ArtifactTarget,
   DiffLocator,
   RenderedLocator,
@@ -107,7 +108,6 @@ function renderedLocator(value: unknown): RenderedLocator {
 function checkSourceQuote(lines: string[], locator: SourceLocator): void {
   if (
     lines.length !== locator.end - locator.start + 1 ||
-    locator.quote.split("\n").length !== lines.length ||
     !lines.join("\n").includes(locator.quote)
   ) {
     throw new ArtifactError("Quote and range must match the selected version's captured source");
@@ -151,30 +151,18 @@ export class ArtifactTargets {
       return { kind, versionSeq, path, locator: null };
     }
     if (kind === "diff") {
-      const file = parseUnifiedDiff(this.artifacts.patch(id, versionSeq)).find(
-        (file) => file.path === path || file.oldPath === path,
-      );
-      if (!file) throw new ArtifactError("Target file is absent from this patch");
-      if (target.locator === null) return { kind, versionSeq, path, locator: null };
+      if (target.locator === null) {
+        const found = parseUnifiedDiff(this.artifacts.patch(id, versionSeq)).some(
+          (file) => file.path === path || file.oldPath === path,
+        );
+        if (!found) throw new ArtifactError("Target file is absent from this patch");
+        return { kind, versionSeq, path, locator: null };
+      }
       const input = requireObject(target.locator, "Diff locator");
       if (input.side !== "old" && input.side !== "new")
         throw new ArtifactError("Diff locator requires an explicit old or new side");
       const locator: DiffLocator = { ...sourceLocator(input), side: input.side };
-      const rows = file.lines.filter((row) => {
-        const line = locator.side === "old" ? row.oldLine : row.newLine;
-        return line !== null && line >= locator.start && line <= locator.end;
-      });
-      if (
-        rows.some(
-          (row, i) => (locator.side === "old" ? row.oldLine : row.newLine) !== locator.start + i,
-        )
-      ) {
-        throw new ArtifactError("Target range crosses a gap in the captured patch");
-      }
-      checkSourceQuote(
-        rows.map((row) => row.text),
-        locator,
-      );
+      await this.sourceRange(id, { kind, versionSeq, path, locator });
       return { kind, versionSeq, path, locator };
     }
     const file = this.artifacts.file(id, versionSeq, path);
@@ -191,18 +179,57 @@ export class ArtifactTargets {
     }
     if (target.locator === null) return { kind, versionSeq, path, locator: null };
     const locator = sourceLocator(target.locator);
-    const bytes = await this.artifacts.readFile(id, versionSeq, path);
-    let source: string;
-    try {
-      source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      if (source.includes("\0")) throw new Error("Binary source");
-    } catch {
-      throw new ArtifactError("Binary files support whole-file feedback only");
-    }
-    const lines = source.replaceAll("\r\n", "\n").split("\n");
-    if (source.endsWith("\n")) lines.pop();
-    checkSourceQuote(lines.slice(locator.start - 1, locator.end), locator);
+    await this.sourceRange(id, { kind, versionSeq, path, locator });
     return { kind, versionSeq, path, locator };
+  }
+
+  async sourceRange(id: string, target: ArtifactTarget): Promise<ArtifactSourceRange> {
+    if ((target.kind !== "source" && target.kind !== "diff") || !target.locator)
+      throw new ArtifactError("Feedback has no captured source or diff line range");
+    const versionSeq = requireSequence(target.versionSeq);
+    const version = this.artifacts.version(id, versionSeq);
+    requireRepresentation(version.kind, target.kind);
+    const path = requireArtifactPath(target.path);
+    const locator = sourceLocator(target.locator);
+    const side = target.kind === "diff" ? target.locator.side : null;
+    let lines: string[];
+    if (target.kind === "diff") {
+      if (side !== "old" && side !== "new")
+        throw new ArtifactError("Diff locator requires an explicit old or new side");
+      const file = parseUnifiedDiff(this.artifacts.patch(id, versionSeq)).find(
+        (file) => file.path === path || file.oldPath === path,
+      );
+      if (!file) throw new ArtifactError("Target file is absent from this patch");
+      const rows = file.lines.filter((row) => {
+        const line = side === "old" ? row.oldLine : row.newLine;
+        return line !== null && line >= locator.start && line <= locator.end;
+      });
+      if (rows.some((row, i) => (side === "old" ? row.oldLine : row.newLine) !== locator.start + i))
+        throw new ArtifactError("Target range crosses a gap in the captured patch");
+      lines = rows.map((row) => row.text);
+    } else {
+      const bytes = await this.artifacts.readFile(id, versionSeq, path);
+      let source: string;
+      try {
+        source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        if (source.includes("\0")) throw new Error("Binary source");
+      } catch {
+        throw new ArtifactError("Binary files support whole-file feedback only");
+      }
+      const all = source.replaceAll("\r\n", "\n").split("\n");
+      if (source.endsWith("\n")) all.pop();
+      lines = all.slice(locator.start - 1, locator.end);
+    }
+    checkSourceQuote(lines, locator);
+    return {
+      artifactId: id,
+      versionSeq,
+      path,
+      side,
+      start: locator.start,
+      end: locator.end,
+      text: lines.join("\n"),
+    };
   }
 }
 

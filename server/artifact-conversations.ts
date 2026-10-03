@@ -127,6 +127,11 @@ export class ArtifactConversations {
     }
   }
 
+  async source(id: string) {
+    const row = this.row(id);
+    return this.targets.sourceRange(row.artifact_id, targetFromColumns(row));
+  }
+
   get(id: string): ArtifactFeedback {
     const row = this.row(id);
     return {

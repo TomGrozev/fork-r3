@@ -101,7 +101,19 @@ export interface TextQuote {
 export interface SourceLocator {
   start: number;
   end: number;
+  // Exact excerpt from within the captured range; it need not cover every line.
   quote: string;
+}
+
+// Complete captured lines for a feedback target, fetched only on demand.
+export interface ArtifactSourceRange {
+  artifactId: string;
+  versionSeq: number;
+  path: string;
+  side: "old" | "new" | null;
+  start: number;
+  end: number;
+  text: string;
 }
 
 // Full-height Markdown frames can exceed an ordinary browser window. Keep

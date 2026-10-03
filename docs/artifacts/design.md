@@ -516,10 +516,15 @@ work symmetrically. Exact cross-representation matching is not required.
 Text selection in source, diffs, rendered Markdown, and HTML works outside comment
 mode. Inputs, textareas, selects, and editable regions are excluded. Selection and
 gutter gestures open an unfocused composer, preserving
-native Copy. Source/diff quotes retain every selected line, including trailing
-whitespace and blank lines; native text capture excludes gutters, diff signs, and
-blank-row display placeholders. The server still checks the complete range and
-quote against the selected version's captured bytes and applies its target limits.
+native Copy. Source/diff locators retain the full selected start/end range while
+the browser stores a quote excerpt of at most four lines and 2,048 UTF-16 code
+units, trimming surrounding whitespace. Native text capture excludes gutters,
+diff signs, and blank-row display placeholders. The server verifies that the
+complete range exists and that the nonblank quote occurs within its captured
+bytes; the quote need not cover every line. Version, file, diff side, contiguous
+capture, and target limits remain mandatory. `r3 feedback source <feedback-id>`
+reads the complete original source/diff range on demand without acknowledging
+feedback. Existing saved quotes remain immutable.
 Space or forward Tab focuses the visible new-note composer at the end;
 Shift+Tab, editable fields, keyboard-focused controls, IME, modifiers, and overlays
 retain their own keys. Keyboard text selection shares native capture with a 275 ms

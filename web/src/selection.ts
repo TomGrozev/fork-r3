@@ -1,6 +1,7 @@
 // Map source/diff DOM rows to a native line anchor. Rendered selections are
 // handled by the isolated preview runtime and never mapped to source lines.
 
+import { sourceQuoteExcerpt } from "../../shared/source-quote.ts";
 import type { DiffSide } from "./types.ts";
 
 export interface PendingAnchor {
@@ -120,7 +121,7 @@ export function getSelectionAnchor(scope: HTMLElement): PendingAnchor | null {
     side: start.side,
     lineStart: start.line,
     lineEnd: selected.end,
-    quote: selected.quote,
+    quote: sourceQuoteExcerpt(selected.quote),
     patchSeq,
   };
 }

@@ -5,6 +5,7 @@ import type {
   ArtifactFeedbackSnapshot,
   ArtifactLifecycleBody,
   ArtifactLifecycleResponse,
+  ArtifactSourceRange,
   ArtifactStreamEvent,
   ArtifactTarget,
 } from "../../shared/artifacts.ts";
@@ -216,7 +217,15 @@ export class ArtifactDemoBackend {
           const number = side === "old" ? line.oldLine : line.newLine;
           return number !== null && number >= start && number <= end;
         });
-        if (rows.length !== end - start + 1 || rows.map((line) => line.text).join("\n") !== quote)
+        if (
+          rows.length !== end - start + 1 ||
+          rows.some((row, i) => (side === "old" ? row.oldLine : row.newLine) !== start + i) ||
+          !quote.trim() ||
+          !rows
+            .map((line) => line.text)
+            .join("\n")
+            .includes(quote)
+        )
           fail("The target does not match captured diff rows");
       }
     } else {
@@ -228,6 +237,7 @@ export class ArtifactDemoBackend {
           start < 1 ||
           end < start ||
           end > source.lines.length ||
+          !quote.trim() ||
           !source.lines
             .slice(start - 1, end)
             .map((line) => line.text)
@@ -238,6 +248,36 @@ export class ArtifactDemoBackend {
       }
     }
   }
+  feedbackSource(id: string): ArtifactSourceRange {
+    const { artifact, note } = this.note(id);
+    const target = note.target;
+    if ((target.kind !== "source" && target.kind !== "diff") || !target.locator)
+      fail("Feedback has no captured source or diff line range");
+    this.target(artifact.id, target);
+    const { versionSeq, path, locator } = target;
+    const { start, end } = locator;
+    const content = this.publication(artifact.id, versionSeq);
+    const side = target.kind === "diff" ? target.locator!.side : null;
+    const lines =
+      target.kind === "diff"
+        ? content.fullDiff
+            .find((file) => file.path === path || file.oldPath === path)!
+            .lines.filter((row) => {
+              const line = side === "old" ? row.oldLine : row.newLine;
+              return line !== null && line >= start && line <= end;
+            })
+        : content.sources[path].lines.slice(start - 1, end);
+    return {
+      artifactId: artifact.id,
+      versionSeq,
+      path,
+      side,
+      start,
+      end,
+      text: lines.map((row) => row.text).join("\n"),
+    };
+  }
+
   addFeedback(
     id: string,
     body: string,

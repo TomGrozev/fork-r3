@@ -2,6 +2,7 @@
 // never crosses files.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SOURCE_QUOTE_LINES, sourceQuoteExcerpt } from "../../shared/source-quote.ts";
 import type { DiffSide } from "./types.ts";
 
 export interface GutterPick {
@@ -78,13 +79,15 @@ function onGutterMouseUp() {
     const lo = Math.min(a.line, end);
     const hi = Math.max(a.line, end);
     const parts: string[] = [];
-    // The server validates every quoted line against the complete selected range.
+    // Only collect enough source for the excerpt; keep the full picked range.
     for (let n = lo; n <= hi; n++) {
       const t = tf(a.side, n);
-      if (t == null) continue;
+      if (t == null) break;
+      if (!parts.length && !t.trim()) continue;
       parts.push(t);
+      if (parts.length === SOURCE_QUOTE_LINES) break;
     }
-    pick({ side: a.side, lineStart: lo, lineEnd: hi, quote: parts.join("\n") });
+    pick({ side: a.side, lineStart: lo, lineEnd: hi, quote: sourceQuoteExcerpt(parts.join("\n")) });
     finish();
   }
 }

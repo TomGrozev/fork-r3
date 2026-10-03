@@ -146,6 +146,15 @@ Native locator examples, with artifact/version/path carried by the surrounding t
 
 These illustrate source, rendered, and diff locators. The targeting module defines their validated shapes, limits, and rendered-text normalization. SQL enforces JSON-object shape and representation compatibility, while the module verifies native ranges, quotes, selectors, and document membership.
 
+For source/diff locators, `start`/`end` identify the complete inclusive line range;
+`quote` may be an exact excerpt anywhere within it. Validation requires all range
+lines to exist in the explicit version/file/side, contiguous diff capture, and a
+nonblank quote contained within those lines. The existing 100-line range and
+16,384-character input-quote limits still apply. The browser submits at most four
+lines and 2,048 UTF-16 code units, without storing display ellipses as source.
+`GET /api/feedback/:id/source` returns `ArtifactSourceRange` from immutable bytes
+on demand; it stores no expanded copy and changes no delivery or claim state.
+
 A rendered locator may also carry `label`, a nonempty plain-text location name of
 at most 200 characters, normalized for whitespace. HTML reply fix links show this
 agent-chosen name instead of a filename. It is presentation metadata and never

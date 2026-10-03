@@ -68,6 +68,15 @@ The CLI, browser, and demo all use this protocol; legacy routes are removed.
   the reply example and the schema document for storage semantics.
   `artifact_summary` and `version_summary` are historical read-only targets;
   new feedback, reply fix targets, and placements reject description anchors.
+- `GET /api/feedback/:id/source` returns `ArtifactSourceRange` for the original
+  source/diff line target: artifact, version, path, side (`null` for source),
+  inclusive start/end, and complete text with LF separators. Rendered, general,
+  and whole-file targets return 400; missing feedback returns 404. The normal
+  authentication and origin guards apply. This read never acknowledges feedback,
+  claims it, or registers a listener. Source/diff quotes may be nonblank exact
+  excerpts within the complete captured range; range existence, version/file/side,
+  diff gaps, and input limits remain validated. Browser excerpts are capped at
+  four lines and 2,048 UTF-16 code units; existing saved quotes are unchanged.
 - `POST/DELETE /api/claims { sessionId, feedbackIds }` claims/releases as the
   named registered agent. Claims change presence, not owner delivery.
 - `GET .../:id/feedback/pending[?feedback=<ids>]` returns an
@@ -213,6 +222,7 @@ The current command families:
 | `feedback add/edit/delete`, `reply`, `place` | Native immutable originals, explicit reply context, separate placements; `--human` required for status edits |
 | `claim`, `release` | Registered session owns a renewable feedback-scoped lease |
 | `feedback fetch`, `watch`, `listen`, `unlisten` | Owner handoff and one designated outward recipient |
+| `feedback source <feedback-id> [--json]` | Read the full original source/diff range on demand; numbered text by default, structured range metadata/text with `--json` |
 | `archive`, `restore` | Ordered retained lifecycle events, optional archive message, retry operation key |
 | `project list/create/edit/delete` | Optional grouping, remote metadata, independent of Git paths |
 | `auth`, `config`, `start/stop/status/restart`, `guide` | Browser login management, local configuration and daemon lifecycle |

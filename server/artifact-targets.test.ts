@@ -61,12 +61,47 @@ describe("native artifact targets", () => {
     await expect(targets.target(id, { ...target, versionSeq: 2 })).rejects.toThrow(
       "captured source",
     );
+    const excerpt = { ...target, locator: { ...target.locator, start: 2 } };
+    expect(await targets.target(id, excerpt)).toEqual(excerpt);
     await expect(
-      targets.target(id, { ...target, locator: { ...target.locator, start: 2 } }),
+      targets.target(id, { ...target, locator: { start: 1, end: 2, quote: "Old" } }),
     ).rejects.toThrow("captured source");
     await expect(targets.target(id, { ...target, versionSeq: null })).rejects.toThrow(
       "explicit integer",
     );
+  });
+
+  test("compact quotes match within a complete captured range without relaxing range bounds", async () => {
+    const id = artifacts.create({ kind: "files", actor }).id;
+    const lines = Array.from({ length: 100 }, (_, i) => `line ${i + 1}  `);
+    await artifacts.publish(id, {
+      actor,
+      expectedSeq: 0,
+      publicationKey: "range",
+      content: { kind: "files", files: [file("source.txt", `${lines.join("\r\n")}\r\n`)] },
+    });
+    const target = {
+      kind: "source" as const,
+      versionSeq: 1,
+      path: "source.txt",
+      locator: { start: 7, end: 13, quote: lines.slice(6, 10).join("\n") },
+    };
+    expect(await targets.target(id, target)).toEqual(target);
+    expect((await targets.sourceRange(id, target)).text).toBe(lines.slice(6, 13).join("\n"));
+    for (const quote of ["line 10", "7  \nline 8", lines.slice(6, 13).join("\n")])
+      expect(
+        await targets.target(id, { ...target, locator: { ...target.locator, quote } }),
+      ).toBeDefined();
+    for (const locator of [
+      { start: 7, end: 13, quote: "line 14" },
+      { start: 7, end: 13, quote: "line 7  \nline 9" },
+      { start: 99, end: 101, quote: "line 99" },
+      { start: 0, end: 13, quote: "line 7" },
+      { start: 1, end: 101, quote: "line 7" },
+      { start: 7, end: 13, quote: "" },
+      { start: 7, end: 13, quote: "x".repeat(16_385) },
+    ])
+      await expect(targets.target(id, { ...target, locator })).rejects.toThrow();
   });
 
   test("dynamic rendered evidence stays native and does not acquire source coordinates", async () => {
@@ -145,7 +180,7 @@ describe("native artifact targets", () => {
     await expect(
       targets.target(id, {
         ...target,
-        locator: { ...target.locator, end: 10, quote: "old\nbefore" },
+        locator: { ...target.locator, end: 10, quote: "old" },
       }),
     ).rejects.toThrow("gap");
   });

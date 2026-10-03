@@ -35,6 +35,7 @@ HTML images: publish standalone assets with relative <img src> URLs; see r3 guid
   claim <feedback-id>... | release <feedback-id>...
   feedback fetch <id> [--all] [--feedback <id,id>] [--attachments-dir <directory>]
   feedback image <id> --image <image-id> [--output <file>] # bytes to stdout otherwise
+  feedback source <feedback-id> [--json]      # full captured source/diff range
   watch <id> [--timeout <seconds>]
   listen <id>                                # explicit notification recipient
   unlisten <id>                              # remove your listener registrations
@@ -44,6 +45,7 @@ HTML images: publish standalone assets with relative <img src> URLs; see r3 guid
 
 Targets: --target <JSON> or --file <path> --version <seq> --view source|rendered|diff
          [--line <start-end> --quote <text>] [--side old|new]
+         source/diff quotes may be exact excerpts within the complete line range.
          rendered: --selector <CSS> [--quote <text>] [--route <query/hash>]
          HTML fix links: set locator.label in --target JSON (see r3 guide html).
          no target flags means general artifact feedback.
@@ -165,6 +167,8 @@ When no agent is listening, the web UI's **Use in agent** button shows a copyabl
 Feedback may include images. Labels such as \`[image1]\` refer to the numbered attachment in that same note or reply. Download them with the supplied \`r3 feedback image\` command and open them with your harness's image-viewing tool before responding. A text reference does not load pixels into the model. Alternatively, \`r3 feedback fetch <id> --attachments-dir ./feedback-images\` downloads and verifies all images in the snapshot before acknowledging it. Capture context describes observed pixels; it does not establish a selector or source line. Use repeatable \`--attach <image>\` on feedback and replies to provide visual evidence.
 
 Inspect original targets in their recorded version and representation. Rendered selectors, quotes, routes, and viewports describe the published page, not source lines. Reuse matching local source when revising your own publication; retrieve published content only when needed, such as an older version or another agent's work. Inspection/download commands are in \`r3 --help\`.
+
+Source/diff quotes may be shortened excerpts; the recorded start/end lines retain the full selection. \`r3 feedback source <feedback-id>\` retrieves every captured line in that original version, file, and diff side, with line numbers. Add \`--json\` for range metadata and text. This read does not acknowledge feedback, claim it, or register a listener. Rendered, general, and whole-file targets have no captured line range and return an error.
 
 Publish changed content, then \`r3 reply <feedback-id> -m <message>\`. Reply separately to each thread. Include \`--version <seq> --view source|rendered|diff\` when discussing a publication; omit both for general messages. Include \`--target\` whenever a published fix location can be verified. Supply JSON with \`kind\`, \`versionSeq\`, \`path\`, and \`locator\`, as above. Source locators use \`start\`, \`end\`, and exact \`quote\`; diff adds \`side\`; rendered uses a verified \`selector\` with optional quote/route. A null locator targets the whole file. The fix target has its own version/view, independent of message context. Omit it when no published location applies; never guess one. Original targets remain immutable; use \`place\` from \`r3 --help\` for additional verified placements.
 

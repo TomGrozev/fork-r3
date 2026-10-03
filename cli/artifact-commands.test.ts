@@ -75,6 +75,99 @@ async function create() {
 }
 
 describe("artifact CLI over the HTTP contract", () => {
+  test("feedback source reads full original ranges on demand without delivery side effects", async () => {
+    const human = { role: "human" as const, sessionId: null };
+    const lines = ["first", "  second", "third", "fourth", "fifth", "sixth  ", ""];
+    for (const kind of ["files", "diff"] as const) {
+      const artifact = storage.artifacts.create({ kind, actor: human });
+      await storage.artifacts.publish(artifact.id, {
+        actor: human,
+        expectedSeq: 0,
+        publicationKey: kind,
+        content:
+          kind === "files"
+            ? {
+                kind,
+                files: [
+                  {
+                    path: "code.txt",
+                    mediaType: "text/plain",
+                    base64: Buffer.from(`${lines.join("\r\n")}\r\n`).toString("base64"),
+                  },
+                ],
+              }
+            : {
+                kind,
+                patch: [
+                  "diff --git a/code.txt b/code.txt",
+                  "--- a/code.txt",
+                  "+++ b/code.txt",
+                  "@@ -1,7 +1,1 @@",
+                  ...lines.map((line) => `-${line}`),
+                  "+replacement",
+                  "",
+                ].join("\n"),
+              },
+      });
+      const note = await storage.conversations.add(artifact.id, {
+        actor: human,
+        body: "Review the full range",
+        target: {
+          kind: kind === "files" ? "source" : "diff",
+          versionSeq: 1,
+          path: "code.txt",
+          locator: {
+            start: 1,
+            end: 7,
+            quote: lines.slice(0, 4).join("\n"),
+            ...(kind === "diff" ? { side: "old" } : {}),
+          },
+        },
+      });
+      if (kind === "files")
+        await storage.artifacts.publish(artifact.id, {
+          actor: human,
+          expectedSeq: 1,
+          publicationKey: "newer",
+          content: {
+            kind,
+            files: [
+              {
+                path: "code.txt",
+                mediaType: "text/plain",
+                base64: Buffer.from("newer contents").toString("base64"),
+              },
+            ],
+          },
+        });
+      const snapshot = storage.conversations.snapshot(artifact.id);
+      const result = await command("feedback", ["source", note.id]);
+      expect(result.code).toBe(0);
+      expect(result.text).toBe(lines.map((line, i) => `${i + 1}\t${line}\n`).join(""));
+      const json = JSON.parse((await command("feedback", ["source", note.id, "--json"])).text);
+      expect(json).toEqual({
+        artifactId: artifact.id,
+        versionSeq: 1,
+        path: "code.txt",
+        start: 1,
+        end: 7,
+        side: kind === "diff" ? "old" : null,
+        text: lines.join("\n"),
+      });
+      expect(storage.conversations.snapshot(artifact.id)).toEqual(snapshot);
+      expect(storage.conversations.get(note.id).claim).toBeNull();
+      expect((await command("feedback", ["fetch", artifact.id, "--all"])).text).toContain(
+        `r3 feedback source ${note.id}`,
+      );
+      const general = await storage.conversations.add(artifact.id, {
+        actor: human,
+        body: "General",
+        target: { kind: "artifact" },
+      });
+      await expect(command("feedback", ["source", general.id])).rejects.toThrow("no captured");
+    }
+    await expect(command("feedback", ["source", "missing"])).rejects.toThrow("not found");
+  });
   test("image-only feedback uploads, downloads, retries and acknowledges only after image delivery", async () => {
     const id = await create();
     const bytes = Buffer.from(

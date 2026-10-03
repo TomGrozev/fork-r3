@@ -24,6 +24,7 @@ import type {
   ArtifactProject,
   ArtifactReply,
   ArtifactSource,
+  ArtifactSourceRange,
   ArtifactStreamEvent,
   ArtifactTarget,
   ArtifactVersion,
@@ -55,6 +56,8 @@ export const artifactApi = {
   list: (filters: Record<string, string | undefined> = {}) =>
     client().json<Artifact[]>("GET", `/api/artifacts${query(filters)}`),
   detail: (id: string) => client().json<ArtifactDetail>("GET", artifactApiPath(id)),
+  feedbackSource: (id: string) =>
+    client().json<ArtifactSourceRange>("GET", `${feedbackApiPath(id)}/source`),
   projects: () => client().json<ArtifactProject[]>("GET", "/api/projects"),
   editProject: (id: string, body: EditArtifactProjectBody) =>
     client().json<ArtifactProject>("PATCH", `/api/projects/${encodeURIComponent(id)}`, body),

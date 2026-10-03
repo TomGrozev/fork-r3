@@ -90,6 +90,7 @@ async function messageOperation(
 }
 
 export const artifactApi: typeof productionApi = {
+  feedbackSource: async (id) => demo.feedbackSource(id),
   sessions: async () =>
     [
       ...new Set(
