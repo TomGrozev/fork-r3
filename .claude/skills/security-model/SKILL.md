@@ -150,11 +150,12 @@ verification POST, or User-Agent registration. The temporary context capability
 authorizes bytes independently of the gate; `Origin:null` is not an authentication
 principal. No preview cookie is issued or accepted. Gate HTML has no CORS headers.
 Direct document navigation remains refused and `frame-ancestors` permits only the
-application origin. The workspace must finish browser checks and obtain any required
-network-risk consent before loading interactive publisher content, rather than merely hiding it.
+application origin. The workspace admits interactive publisher content after
+successful browser checks or remembered compatibility consent. Hiding an executing
+document is not admission control.
 For an HTML version's declared entrypoint, context setup and the gate can run
-alongside the file manifest; the document waits for both gate success and manifest
-membership before loading.
+alongside the file manifest; the document waits for manifest membership and either
+gate success or remembered compatibility consent before loading.
 The allowed-fetch, forbidden-fetch, and WebRTC probes run concurrently. The gate
 still requires every applicable result; allowed-fetch failure is a transport
 error, never proof of network blocking or a reason to offer compatibility consent.
@@ -189,33 +190,40 @@ an abandoned URL capability can remain valid until expiry.
 The workspace retains up to 16 inactive protected document context identities in
 tab-scoped sessionStorage, excluding external contexts, device grants, and document
 bytes. Mounted contexts are not evicted. Reopening authenticates a renewal and
-runs the iframe gate again before mounting published content; only a missing or
-expired context permits recreation. This preserves URLs for HTTP revalidation
+repeats the iframe gate unless compatibility consent is remembered; only a missing
+or expired context permits recreation. This preserves URLs for HTTP revalidation
 across view switches and refreshes. Deletion removes saved handles and revokes
 their contexts; an unavailable artifact also clears its handles when revisited.
 Inactive retained capabilities expire normally. Media contexts are released normally.
 
 Compatibility mode retains all blocked-mode response headers, including CSP and
 Connection Allowlist where implemented, but skips proof of network enforcement.
-The workspace still checks secure transport, an opaque origin, and resource
-reachability before loading publisher content. It is available
+Remembered consent loads the document directly, without a gate document, allowed
+or forbidden fetch, or WebRTC probe. The parent requires a secure context and
+authenticated scoped context setup; server transport, membership, sandbox and
+origin guards remain enforced. The actual document bridge must originate from
+the exact iframe with an opaque origin before becoming interactive. It is available
 for HTML and rendered files, never diffs. Camera/microphone relay remains disabled.
 This mode cannot promise to prevent exfiltration: navigation, WebRTC, and other
 browser-dependent gaps can transmit data even though ordinary external resource
 loads and fetches remain restricted. Do not label it a closed network.
 
-The trusted workspace first attempts `blocked` for every preview visit. Only the
-trusted gate's network-specific failure can offer compatibility consent; gate
-messages after readiness are ignored so publisher scripts cannot forge a downgrade.
+Without remembered consent, the trusted workspace first attempts `blocked`. Only
+the trusted gate's network-specific failure can offer compatibility consent; gate
+messages after admission are ignored so publisher scripts cannot forge a downgrade.
 Before consent no published bytes are requested. Declining leaves the preview
 closed with an action to reopen the warning. Acceptance is remembered under a
 versioned localStorage key for this application origin/browser; unavailable
-storage falls back to memory for the application load. It applies to future
-network-policy failures only, so browser upgrades still gain verified protection.
+storage falls back to memory for the application load. Accepted previews select
+`compatible` immediately on reloads, new tabs, and version changes. There is no
+expiry, browser-version invalidation, or background capability recheck, including
+after browser upgrades. Clearing site storage or **Forget browser choice** restores
+blocked-mode checks; the indicator remains amber even on capable browsers.
 One application-level warning owner prevents simultaneous file/media previews
 from stacking dialogs. A decline suppresses further automatic prompts for that
 application load; each closed preview retains its explicit review-risk action.
-Forgetting the choice stops compatible previews in this tab and other open tabs.
+Forgetting the choice revokes active compatible contexts in this tab and other
+open tabs and starts blocked-mode verification.
 It does not undo data already transmitted or cancel independently granted external mode.
 
 A shield row in the trusted top navigation’s three-dot menu summarizes all mounted previews.
@@ -285,8 +293,8 @@ including error responses, without permitting credentials. It does not apply to
 application APIs or gate HTML.
 
 The parent accepts a bridge connection only from its exact iframe window,
-`Origin:null`, context id, and a published path, after gate readiness. Each document
-transfers a MessagePort to the exact application origin. Replies stay on that
+`Origin:null`, context id, and a published path, after gate readiness or remembered
+compatibility consent. Each document transfers a MessagePort to the exact application origin. Replies stay on that
 port, so navigation cannot deliver a pending result to a replacement document.
 The bridge exposes context, same-artifact conversations, human feedback/replies,
 explicit Submit, change notifications, and an artifact-scoped light/dark preference. It has no generic HTTP or host-command

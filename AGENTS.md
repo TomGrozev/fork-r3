@@ -209,11 +209,11 @@ SVG; unsupported syntax falls through to source.
 
 Opened Markdown is cached by immutable rendering identity in the trusted app's
 IndexedDB (64 MiB, 30 days unused, least-recently-opened eviction). Normal app
-authentication precedes a passive cached reading view; preview checks continue
-before enabling resources, navigation, or feedback. The passive iframe strips
+authentication precedes a passive cached reading view; preview admission requires
+verification or remembered compatibility consent before resources or interaction. The passive iframe strips
 active elements and URLs and permits only its trusted layout/scroll helper.
-Authored HTML retains its existing blocking gate. Cache deletion/logout cleanup
-must prevent late writes across tabs; logout also suspends caching until normal
+Authored HTML requires the blocking gate or remembered compatibility consent.
+Cache deletion/logout cleanup must prevent late writes across tabs; logout also suspends caching until normal
 authenticated bootstrap. No permanent content capability is added.
 
 Keyboard bindings have a visible control, stand down in text fields and overlays,
@@ -278,9 +278,11 @@ device tests use fake devices and actual browser permission denial/grant.
 - Never weaken auth, origin guards, or the opaque preview sandbox. The preview
   network is closed by default. A failed network capability check permits a new
   restrictive compatibility context only after browser risk acknowledgment.
-  Broader external access remains an explicit HTML-only grant. Isolation and
-  transport failures always stay closed. Never bind all interfaces or move a data
-  endpoint outside its guard. Device consent does not permit external networking.
+  Remembered acknowledgment skips future capability gates until forgotten;
+  compatible previews retain restrictive headers and the opaque sandbox.
+  Broader external access remains an explicit HTML-only grant. Context setup and
+  actual origin validation remain mandatory; failures never create consent. Never
+  bind all interfaces or move a data endpoint outside its guard. Device consent does not permit external networking.
 - Mobile containers must not complicate desktop components; use the mobile skill.
 - Keep `HELP` and `GUIDE` in `cli/artifact-help.ts` accurate in the same change as
   any public command, output, flag, or agent-loop behavior.

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArtifactApiError } from "../../../shared/artifact-client.ts";
 import {
@@ -50,21 +50,35 @@ function forgetDeniedMarkdown(error: unknown, artifactId?: string) {
 }
 
 export function ArtifactPreview(props: ArtifactRenderedPaneProps) {
-  // External resources and devices belong to this version visit. The separate
-  // browser compatibility acknowledgment is considered only after a failed gate.
+  // External resources and devices belong to this version visit. Compatibility
+  // acknowledgment belongs to the browser and survives version visits.
   return <VersionPreview key={`${props.detail.id}:${props.version.seq}`} {...props} />;
 }
 
 function VersionPreview(props: ArtifactRenderedPaneProps) {
   const [attempt, retry] = useState(0);
-  const [network, setNetwork] = useState<ArtifactPreviewNetwork>("blocked");
+  const compatibilityAccepted = useCompatibilityConsent();
+  const [external, setExternal] = useState(false);
+  const network: ArtifactPreviewNetwork = external
+    ? "external"
+    : compatibilityAccepted
+      ? "compatible"
+      : "blocked";
   const currentNetwork = useRef(network);
   currentNetwork.current = network;
-  const [verification, setVerification] = useState<PreviewVerification>("checking");
+  const [checked, setChecked] = useState<{
+    network: ArtifactPreviewNetwork;
+    state: PreviewVerification;
+  } | null>(null);
+  const verification = checked?.network === network ? checked.state : "checking";
+  const setVerification = useCallback(
+    (state: PreviewVerification) => setChecked({ network, state }),
+    [network],
+  );
   const [compatibilityRequired, setCompatibilityRequired] = useState(false);
   const [confirmCompatibility, setConfirmCompatibility] = useState(false);
   const [warningOwner] = useState(() => ({}));
-  const compatibilityAccepted = useCompatibilityConsent();
+  const previousConsent = useRef(compatibilityAccepted);
   useEffect(() => () => previewCompatibility.closeWarning(warningOwner), [warningOwner]);
   const closeCompatibilityWarning = () => {
     previewCompatibility.closeWarning(warningOwner);
@@ -106,26 +120,17 @@ function VersionPreview(props: ArtifactRenderedPaneProps) {
     if (network !== nextNetwork) setVerification("checking");
     setCompatibilityRequired(false);
     closeCompatibilityWarning();
-    setNetwork(nextNetwork);
+    setExternal(nextNetwork === "external");
   };
   useEffect(() => {
-    if (network !== "compatible" || compatibilityAccepted) return;
-    // Forgetting consent stops compatible previews in this tab and other tabs.
-    // A failed retry stays closed until the user opens the warning again.
-    previewCompatibility.suppressWarning();
-    setVerification("checking");
-    setNetwork("blocked");
-  }, [network, compatibilityAccepted]);
-  useEffect(() => {
-    if (network !== "blocked" || !compatibilityRequired || !compatibilityAccepted) return;
-    // Another preview may have obtained the site-wide acknowledgment while
-    // this warning was open. Only an already-failed network gate can use it.
-    setConfirmCompatibility(false);
-    previewCompatibility.closeWarning(warningOwner);
-    setCompatibilityRequired(false);
-    setVerification("checking");
-    setNetwork("compatible");
-  }, [network, compatibilityRequired, compatibilityAccepted, warningOwner]);
+    if (previousConsent.current && !compatibilityAccepted) previewCompatibility.suppressWarning();
+    previousConsent.current = compatibilityAccepted;
+    if (compatibilityAccepted) {
+      setConfirmCompatibility(false);
+      previewCompatibility.closeWarning(warningOwner);
+      setCompatibilityRequired(false);
+    }
+  }, [compatibilityAccepted, warningOwner]);
   const files = useQuery({
     queryKey: ["artifact-files", props.detail.id, props.version.seq],
     queryFn: () => artifactApi.files(props.detail.id, props.version.seq),
@@ -247,7 +252,9 @@ function PreviewSession(
   const fittedPath = useRef<string | null>(null);
   const iframe = useRef<HTMLIFrameElement>(null);
   const currentPath = useRef(initialPath);
-  const verified = useRef(false);
+  // Admission comes from the gate or the owner's remembered compatibility
+  // choice. The document bridge still validates its frame, opaque origin/path.
+  const admitted = useRef(false);
   const connection = useRef<MessagePort | null>(null);
   const checkDocument = useRef(() => {});
   const current = useRef(props);
@@ -294,7 +301,7 @@ function PreviewSession(
     setReady(false);
     setDocumentHeight(null);
     current.current.onVerification("checking");
-    verified.current = false;
+    admitted.current = false;
     const renew = async () => {
       if (!grant || closed) return;
       try {
@@ -319,8 +326,16 @@ function PreviewSession(
           previewSessions.release(value, current.current.retainContext());
           return;
         }
+        if (network === "compatible") {
+          if (!previewCompatibility.accepted() || !isSecureContext) {
+            previewSessions.release(value, false);
+            grant = null;
+            throw new Error("Preview compatibility is unavailable. Retry to verify protection.");
+          }
+          admitted.current = true;
+        }
         setContext(value);
-        setSrc(value.gateUrl);
+        setSrc(network === "compatible" ? value.documentUrl : value.gateUrl);
         timer = setInterval(() => {
           void renew();
         }, 10 * 60_000);
@@ -420,9 +435,9 @@ function PreviewSession(
       if (message.type === "r3-preview-gate") {
         // After the trusted gate finishes, publisher code knows the context id.
         // It must never forge a failure to downgrade policy or solicit consent.
-        if (verified.current) return;
-        if (message.state === "ready" && !verified.current) {
-          verified.current = true;
+        if (admitted.current) return;
+        if (message.state === "ready" && !admitted.current) {
+          admitted.current = true;
           current.current.onVerification("ready");
           setReady(false);
           setSrc(context.documentUrl);
@@ -446,11 +461,12 @@ function PreviewSession(
       }
       if (message.type !== "r3-preview-connect" || event.ports.length !== 1) return;
       if (
-        !verified.current ||
+        !admitted.current ||
         typeof message.path !== "string" ||
         !current.current.paths.includes(message.path)
       )
         return;
+      if (network === "compatible") current.current.onVerification("ready");
       clearCheck();
       connection.current?.close();
       const port = event.ports[0];
@@ -749,7 +765,7 @@ function PreviewSession(
   }, [context, id, seq, qc, capture, network]);
 
   useEffect(() => {
-    if (!context || !verified.current || !ready || props.path === currentPath.current) return;
+    if (!context || !admitted.current || !ready || props.path === currentPath.current) return;
     currentPath.current = props.path;
     capture.revoke();
     current.current.onDevicesReset();
@@ -823,11 +839,13 @@ function PreviewSession(
     documentHeight?.path === props.path && props.markdownPaths.includes(props.path)
       ? documentHeight.height
       : undefined;
-  // Entry-point setup can overlap the manifest. Keep the gate frame mounted
-  // until membership is known, including when verification finishes first.
+  // Entry-point setup can overlap the manifest. Publisher bytes always wait
+  // for membership; an acknowledged preview waits without loading a gate.
   const frameSrc =
     context && src === context.documentUrl && !props.paths.includes(initialPath)
-      ? context.gateUrl
+      ? network === "compatible"
+        ? ""
+        : context.gateUrl
       : src;
   const fitMarkdown = props.detail.kind === "files" && !!renderedHash;
   const reading = !error && !!cachedDocument && (!ready || (fitMarkdown && height === undefined));

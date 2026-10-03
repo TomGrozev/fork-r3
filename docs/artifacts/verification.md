@@ -95,7 +95,7 @@ R3_TEST_BROWSER="$TEST_UNSUPPORTED_CHROMIUM" R3_TEST_UNSUPPORTED=1 bun scripts/t
 | `test-markdown-cache.ts` | Real IndexedDB persistence, hash/identity checks, concurrent opens, LRU/expiry, oversized documents, cross-instance invalidation races, stale bootstrap responses, persisted cache suspension, corrupt bytes, reconnect cleanup, and storage failure. Uses the same Playwright engine settings |
 | `test-passive-markdown.ts` | Passive formatting, theme, scroll and opaque isolation; hostile script/HTML/SVG/CSS inputs cannot initiate requests or navigate. Uses the same Playwright engine settings |
 | `test-preview-network.ts` | HTML-only network control in the nav security popover and modal shortcut suspension; protected default, cancellation, external script loading and transmission of fixture content/conversations to a controlled endpoint; retained sandbox and real app API rejection, including after external navigation to a document with workers and nested frames; context revocation, native navigation, version/reload reset; explicit opt-out in a browser that refuses protected rendering; `R3_TEST_CAPTURE=1` adds real browser denial/grant, received audio/video, independent physical track and clone shutdown, Stop sharing, stale consent dialog dismissal, navigation/version revocation, and unresponsive-page shutdown/recovery |
-| `test-preview-compatibility.ts` | Actual capability gate and workspace in caller-installed Playwright engines: no publication bytes before consent, one warning and one aggregate nav indicator for concurrent media previews, decline/reopen, remembered acknowledgment, cross-tab revocation, storage-write failure, verified blocking despite saved acknowledgment, publisher gate-message forgery rejection, restrictive CSP, accurate external-navigation disclosure, app isolation, interaction/feedback, native navigation, versions, rendered files, and recovery that refuses transport errors |
+| `test-preview-compatibility.ts` | Actual capability gate and workspace in caller-installed Playwright engines: no publication bytes before consent, one warning and one aggregate nav indicator for concurrent media previews, decline/reopen, remembered acknowledgment skips every gate and probe across reloads/tabs/versions (including capable browsers), delayed manifest membership, cross-tab revocation restores verification, storage-write failure, publisher gate-message forgery rejection, restrictive CSP, accurate external-navigation disclosure, app isolation, interaction/feedback, native navigation, versions, rendered files, and authenticated context failures remain closed; unconsented recovery refuses transport errors |
 | `test-preview-isolation.ts` | Native modules/CSS/fetch/XHR/media, video/audio seeking and ranges, two opaque frames on the application address, parent/sibling/storage and cookie isolation, denied workers and frames, blocked external resources/navigation/redirects/sockets/WebRTC, and denied capture even after a transport-origin device grant |
 
 The compatibility suite uses an existing `playwright-core` package without adding
@@ -119,7 +119,7 @@ native permission decisions.
 Reference runs on 2026-09-12 passed in Chrome for Testing 153.0.8010.36. Chromium
 151 was refused before requesting published files. Its CSP-only WebRTC probe had
 emitted packets; Connection Allowlist enforcement prevented them in the supported
-browser. The workspace runs the runtime gate before requesting publisher content;
+browser. Without remembered consent, the workspace runs the runtime gate before requesting publisher content;
 the server authorizes bytes using the temporary context capability.
 The compatibility suite passed on Linux in Chrome for Testing 153.0.8010.36
 (verified blocking), Chromium 151.0.7922.173, and Playwright's patched Firefox 153.0
@@ -129,6 +129,13 @@ These runs do not establish the full six-month release matrix or actual macOS/iO
 Safari coverage. No Safari platform acceptance has been run for this change.
 See [preview security](../../.claude/skills/security-model/SKILL.md#preview-host)
 for the enforced policy and scoped authorization.
+
+The remembered-consent change passed compatibility acceptance in Chromium 151 and
+Chrome for Testing 153: immediate acceptance and saved consent skip all gates and
+probes, manifest membership still precedes publisher bytes, forgetting restores
+verification across tabs, and authenticated setup failure remains closed.
+Production application startup, native isolation, and external-access/device
+regressions also passed in Chrome 153. These runs used isolated stores and profiles.
 
 A passing suite establishes the exercised scenarios, not the absence of defects.
 Source and preview unit tests assert that conditional reads skip blob access and

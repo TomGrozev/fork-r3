@@ -124,7 +124,10 @@ const api = createArtifactApi(
 const grants: ArtifactPreviewContext[] = [];
 let publicationRequests = 0;
 let verificationRequests = 0;
+let probeRequests = 0;
 let failCheck = false;
+let failPreview = false;
+let holdManifest: Promise<void> | null = null;
 let deniedAppRequests = 0;
 const app = Bun.serve({
   hostname: "127.0.0.1",
@@ -135,11 +138,19 @@ const app = Bun.serve({
     if (path.startsWith(PREVIEW_PREFIX)) {
       if (path.includes("/files/")) publicationRequests++;
       if (path.endsWith("/r3/verify")) verificationRequests++;
+      if (/\/(?:r3\/(?:gate|check)|outside\/check)$/.test(path)) probeRequests++;
       if (failCheck && path.endsWith("/r3/check"))
         return new Response("Unavailable", { status: 503 });
       return preview.fetch(request);
     }
     if (path.startsWith("/api/")) {
+      if (path.endsWith("/files") && holdManifest) await holdManifest;
+      if (
+        failPreview &&
+        ((request.method === "POST" && path.endsWith("/previews")) ||
+          (request.method === "PATCH" && path.startsWith("/api/previews/")))
+      )
+        return Response.json({ error: "Preview setup unavailable" }, { status: 503 });
       const response = await api.app.fetch(request);
       if (
         (request.method === "POST" && path.endsWith("/previews") && response.status === 201) ||
@@ -238,7 +249,10 @@ try {
     await warning.getByRole("button", { name: "Keep preview closed" }).click();
     assert.equal(await page.locator("[data-artifact-preview] iframe").count(), 0);
     await page.getByRole("button", { name: "Review browser risk" }).click();
+    const probesBeforeAccept = probeRequests;
     await warning.getByRole("button", { name: "Accept risk and continue" }).click();
+    await waitForContent();
+    assert.equal(probeRequests, probesBeforeAccept, "acceptance skips the compatibility gate");
   }
   await waitForContent();
   assert.equal(await warning.count(), 0);
@@ -351,19 +365,53 @@ try {
       "limited",
     );
   }
-  // Acknowledgment is site-wide, but a newly capable browser must still use
-  // verified protection. Seeding a preference here does not mock the gate.
+  // Saved acknowledgment skips all probes, including on a capable browser.
   if (!unsupported)
     await page.evaluate(() => localStorage.setItem("r3:preview-compatibility:v1", "accepted"));
+  const probesBeforeConsentReload = probeRequests;
+  const filesBeforeConsentReload = publicationRequests;
+  let releaseManifest!: () => void;
+  holdManifest = new Promise<void>((resolve) => {
+    releaseManifest = resolve;
+  });
+  const manifestRequested = page.waitForRequest((request: any) =>
+    new URL(request.url()).pathname.endsWith("/files"),
+  );
+  const contextReady = page.waitForResponse((response: any) => {
+    const path = new URL(response.url()).pathname;
+    return (
+      (response.request().method() === "PATCH" && path.startsWith("/api/previews/")) ||
+      (response.request().method() === "POST" && path.endsWith("/previews"))
+    );
+  });
   await page.reload();
+  await Promise.all([manifestRequested, contextReady]);
+  assert.equal(
+    publicationRequests,
+    filesBeforeConsentReload,
+    "publisher bytes wait for membership",
+  );
+  assert.equal(probeRequests, probesBeforeConsentReload, "waiting for membership needs no gate");
+  holdManifest = null;
+  releaseManifest();
   await waitForContent();
   assert.equal(await warning.count(), 0, "no repeated warning after acknowledgment");
-  assert.equal(grants.at(-1)!.network, unsupported ? "compatible" : "blocked");
+  assert.equal(grants.at(-1)!.network, "compatible");
+  assert.equal(
+    probeRequests,
+    probesBeforeConsentReload,
+    "saved consent must not rerun any gate or probe",
+  );
   await page.getByRole("button", { name: "Published version" }).click();
   await page.getByRole("option", { name: "Version 2", exact: true }).click();
   await waitForContent(2);
   assert.equal(await warning.count(), 0);
-  assert.equal(grants.at(-1)!.network, unsupported ? "compatible" : "blocked");
+  assert.equal(grants.at(-1)!.network, "compatible");
+  assert.equal(
+    probeRequests,
+    probesBeforeConsentReload,
+    "version switches preserve the no-probe choice",
+  );
 
   if (unsupported) {
     const second = await context.newPage();
@@ -373,6 +421,7 @@ try {
       .getByRole("heading", { name: "Version 1" })
       .waitFor();
     const old = grants.at(-1)!;
+    assert.equal(probeRequests, probesBeforeConsentReload, "new tabs share the no-probe choice");
     if (!(await page.getByRole("dialog", { name: "Artifact details", exact: true }).isVisible()))
       await page.getByRole("button", { name: "Artifact details and actions" }).click();
     await page.locator("[data-preview-security] > button[aria-expanded]").click();
@@ -409,8 +458,22 @@ try {
     await page.locator("[data-preview-security] > button[aria-expanded]").click();
   }
 
-  // Transport/verification errors never become a consented network fallback.
+  // A broken probe endpoint is irrelevant after acknowledgment.
   failCheck = true;
+  const probesBeforeBrokenCheck = probeRequests;
+  await page.reload();
+  await waitForContent(2);
+  assert.equal(probeRequests, probesBeforeBrokenCheck);
+  // Authenticated context setup remains mandatory even after acknowledgment.
+  failPreview = true;
+  const beforeSetupFailure = publicationRequests;
+  await page.reload();
+  await page.getByText("Preview setup unavailable").waitFor();
+  assert.equal(publicationRequests, beforeSetupFailure);
+  assert.equal(await warning.count(), 0);
+  failPreview = false;
+  // Without consent, transport errors still cannot enable a network fallback.
+  await page.evaluate(() => localStorage.removeItem("r3:preview-compatibility:v1"));
   const beforeFailure = grants.length;
   const beforeFiles = publicationRequests;
   await page.reload();
@@ -424,6 +487,7 @@ try {
     ["blocked"],
   );
   failCheck = false;
+  await page.evaluate(() => localStorage.setItem("r3:preview-compatibility:v1", "accepted"));
   await page.goto(`${origin}/?artifact=${files.id}&version=1`);
   await page.getByRole("button", { name: "Rendered", exact: true }).first().click();
   await waitForContent();
@@ -432,7 +496,7 @@ try {
     0,
   );
   assert.equal(await warning.count(), 0);
-  assert.equal(grants.at(-1)!.network, unsupported ? "compatible" : "blocked");
+  assert.equal(grants.at(-1)!.network, "compatible");
   await context.close();
   assert.equal(verificationRequests, 0, "browser checks never require a server challenge exchange");
 
@@ -457,7 +521,7 @@ try {
     await ephemeral.close();
   }
   console.log(
-    `Compatibility acceptance: ${engine} ${browser.version()}; ${unsupported ? "consent, persistence, revocation, restrictive fallback" : "verified blocking despite saved compatibility consent"}, isolation, interaction, feedback, navigation, and version switching passed`,
+    `Compatibility acceptance: ${engine} ${browser.version()}; saved consent skips probes, first-use verification, isolation, revocation, interaction, feedback, navigation, and versions passed`,
   );
 } finally {
   await browser?.close();

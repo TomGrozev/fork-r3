@@ -219,7 +219,7 @@ a passive local reading view while preview checks run. It preserves formatting,
 theme, and scroll, but strips navigation/resource attributes and active elements.
 An opaque iframe's restrictive CSP permits only a trusted layout/scroll helper;
 publisher scripts, images, network requests, links, and feedback actions are absent.
-The normal interactive document replaces it once the gate and layout are ready.
+The normal interactive document replaces it after admission and layout are ready.
 There is no additional login check and no display before application bootstrap.
 Authenticated application HTML carries bootstrap and the addressed artifact's
 detail, so the workspace can start without two serial API round trips. Detail
@@ -227,8 +227,8 @@ includes current labels for referenced agent sessions, eliminating the global
 session-list request for attribution. For HTML artifacts the shell also carries
 the selected version’s immutable file manifest, bounded to 128 files and 64 KiB
 of JSON; larger manifests retain their parallel API read. This metadata does not
-authorize publisher execution before successful browser verification. The shell
-uses private/no-store responses with escaped JSON; static bundles remain cached.
+authorize publisher execution without browser verification or remembered risk
+consent. The shell uses private/no-store responses with escaped JSON; static bundles remain cached.
 Cross-site entry falls back to same-origin bootstrap. Inline snapshots never
 resume suspended caches: those use fresh bootstrap with the existing epoch guards.
 SSE ready/reconnect continues to reconcile mutable artifact state in the background.
@@ -237,7 +237,7 @@ view; cached bytes never bypass authorization for server access.
 
 The current temporary preview capability supplies retained bytes on a cache miss.
 A server-served empty Markdown shell retains response security headers and the
-native document URL. After the browser gate, the trusted parent sends the selected
+native document URL. After preview admission, the trusted parent sends the selected
 document over its exact port; Markdown runtime setup waits for the content mount.
 New or expired preview contexts can therefore reuse immutable document bytes.
 Logout, unauthenticated boot, known deletion, and definitive access failures clear
@@ -254,15 +254,16 @@ revalidation. Matching validators skip source highlighting or document rewriting
 and blob reads, after membership and access checks. Immutable companion resources
 keep long-lived private HTTP caching. The browser controls cache size and eviction.
 Only normally requested resources are cached; there is no prefetch or offline reader.
-Opening an HTML version's declared entrypoint starts its preview context and
-browser gate alongside the file manifest. Publisher content still waits for both
-checks. The trusted runtime is embedded in the document response before publisher
-scripts, removing a blocking request while preserving execution order. Generated
+Opening an HTML version's declared entrypoint starts its preview context alongside
+the file manifest, with a browser gate when consent is absent. Publisher content requires manifest
+membership and either gate success or remembered compatibility consent. The trusted
+runtime is embedded in the document response before publisher scripts, removing a blocking request while preserving execution order. Generated
 preview HTML and scripts use negotiated gzip; their validators cover the runtime.
 
 Protected document context identities are retained per tab so reopened previews
-can reuse their URLs. Every reopening authenticates renewal and repeats the gate;
-external-access and device grants never persist. Deletion clears app content state
+can reuse their URLs. Every reopening authenticates renewal; the gate repeats
+unless compatibility consent is remembered. External-access and device grants
+never persist. Deletion clears app content state
 and context identities when detected, but physical HTTP-cache eviction belongs to
 the browser. See the security reference for expiry and retention bounds.
 
@@ -624,10 +625,16 @@ closed until the human accepts a browser risk warning. Compatibility mode retain
 the restrictive headers and sandbox but cannot guarantee complete network blocking.
 The warning explains the risk of malicious dependencies sending published files,
 review conversations, or later user input. Acceptance is remembered for this r3
-site in this browser; every new preview still attempts verified protection first.
-Transport, isolation, and verification errors never trigger the fallback. Forgetting
-the choice through **Preview security** in the navigation menu stops open
-compatible previews, including other tabs.
+site in this browser. Once accepted, future previews load compatible documents
+directly without a gate document, fetch probes, or a WebRTC probe. The choice
+has no expiry and survives reloads, new tabs, version changes, and browser upgrades
+until site storage is cleared or the user selects **Forget browser choice**. The
+indicator stays amber, including on capable browsers. Authenticated context setup,
+secure transport, published membership, restrictive response headers, and the opaque
+iframe remain required; the actual document bridge validates its opaque origin.
+Transport, isolation, and verification errors never create consent. Forgetting
+the choice through **Preview security** revokes open compatible contexts in all
+tabs and restores blocked-mode verification.
 Persistent storage, workers, nested frames, camera, and microphone are unavailable
 in protected previews.
 Granting a device permission to the transport origin cannot enable direct iframe capture.

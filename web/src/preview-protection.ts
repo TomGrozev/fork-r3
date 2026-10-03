@@ -45,7 +45,7 @@ function subscribe(changed: () => void) {
 }
 
 // This acknowledgment never enables broader external resources or devices.
-// Every new preview still attempts verified network protection first.
+// Accepted compatibility persists until forgotten and skips capability probes.
 export const previewCompatibility = {
   accepted,
   accept: () => save(true),

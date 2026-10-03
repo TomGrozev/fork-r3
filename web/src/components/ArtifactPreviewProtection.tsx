@@ -58,7 +58,7 @@ export function ArtifactPreviewProtection({
         network === "blocked"
           ? "Verified network protection means this preview passed the browser’s network-blocking checks. It does not certify the artifact’s content."
           : network === "compatible"
-            ? "This browser cannot guarantee network blocking. Published documents restrict external resources; pages reached through navigation may have no network restrictions. Either may transmit files, conversations, or input."
+            ? "You accepted limited protection, so browser checks are skipped until you forget that choice. Published documents restrict external resources; pages reached through navigation may have no network restrictions. Either may transmit files, conversations, or input."
             : "This page can load external scripts and contact external services. Published files, conversations, input, and shared media can be sent elsewhere.",
       state: !ready ? verification : network === "blocked" ? "verified" : "limited",
       icon: (

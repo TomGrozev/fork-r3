@@ -57,8 +57,8 @@ export function ArtifactPreviewCompatibilityConsent({
         </p>
         <p>
           Continue only with content you trust. This choice is remembered for previews on this r3
-          site in this browser. You can forget it in the protection icons above the preview.
-          Browsers that pass the protection check always use full network blocking.
+          site in this browser. Future previews skip protection checks, including after browser
+          upgrades. Use “Forget browser choice” in the preview security menu to check again.
         </p>
       </div>
       <div className="mt-5 flex flex-wrap justify-end gap-2">
