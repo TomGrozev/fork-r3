@@ -149,7 +149,12 @@ atomically clears durable records; restore requires a new publication/registrati
   `ArtifactDetail`, using the same contracts to seed the initial workspace.
   For HTML artifacts it also embeds the selected version’s immutable file manifest
   when at most 128 files and 64 KiB of JSON. Larger manifests use the parallel API
-  read. Unknown explicit versions never substitute the latest version.
+  read. An HTML GET may embed scoped blocked/compatible preview setup for that
+  version’s entrypoint; the browser selects using its saved consent and validates
+  the application origin. The first context use retires the unused alternative.
+  Missing, expired or mismatched setup uses the existing create/renew routes.
+  External grants are never embedded; full reloads trade retained preview URLs
+  for one fewer serial request. Unknown explicit versions never substitute the latest version.
   These documents are private/no-store; cross-site entry, absent session cookies,
   and suspended browser caches fall back to `/api/boot`. API checks remain on
   every data request, and SSE ready still triggers background reconciliation.

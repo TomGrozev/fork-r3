@@ -80,9 +80,15 @@ no-login mode retains its existing bootstrap trust boundary. The embedded detail
 uses the API's complete shape and collaboration state; it seeds the browser query
 cache, while SSE ready/reconnect still reconciles current state in the background.
 The same authenticated snapshot may include the selected HTML version’s bounded
-file manifest. It supplies membership metadata only: context renewal and every
-browser verification check still precede publisher document loading. Agent labels
-are limited to sessions referenced by the artifact and carry no credentials.
+file manifest. For an HTML GET, it may also prepare fresh blocked and compatible
+contexts for the selected version’s declared entrypoint. The browser selects from
+its local consent state only after bootstrap and cache-suspension checks, verifies
+the application origin and artifact/version/path, and consumes the setup once.
+It still requires manifest membership and gate success or remembered consent.
+The first valid preview request retires the unused mode; no cleanup HTTP request
+is needed. External access is never prepared. HEAD and invalid explicit versions
+prepare nothing. Capacity/configuration failures omit setup and leave the ordinary
+API fallback available. Agent labels carry no credentials.
 Application documents are `private, no-store`, have no reusable validator, and
 escape `<` in embedded JSON. Static bundles retain immutable caching. Remote
 snapshots contain no API token. Cross-site/opaque requests and missing or revoked
@@ -189,10 +195,15 @@ an abandoned URL capability can remain valid until expiry.
 
 The workspace retains up to 16 inactive protected document context identities in
 tab-scoped sessionStorage, excluding external contexts, device grants, and document
-bytes. Mounted contexts are not evicted. Reopening authenticates a renewal and
-repeats the iframe gate unless compatibility consent is remembered; only a missing
-or expired context permits recreation. This preserves URLs for HTTP revalidation
-across view switches and refreshes. Deletion removes saved handles and revokes
+bytes. Mounted contexts are not evicted. In-app reopening authenticates renewal
+and repeats the gate unless compatibility consent is remembered; only a missing
+or expired context permits recreation. Eligible full HTML navigations instead
+supply fresh contexts, eliminating the serial setup request but changing resource
+URLs and losing HTTP-cache identity across those reloads. Existing contexts are
+not revoked merely because another navigation prepares a context: another tab
+may still use them. Abandoned contexts retain the one-hour expiry and the shared
+512-context cap. Fresh preparation rolls back a partial pair at capacity; a
+retained context can still renew through the fallback API. Deletion removes saved handles and revokes
 their contexts; an unavailable artifact also clears its handles when revisited.
 Inactive retained capabilities expire normally. Media contexts are released normally.
 

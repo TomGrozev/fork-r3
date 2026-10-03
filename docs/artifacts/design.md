@@ -231,6 +231,12 @@ authorize publisher execution without browser verification or remembered risk
 consent. The shell uses private/no-store responses with escaped JSON; static bundles remain cached.
 Cross-site entry falls back to same-origin bootstrap. Inline snapshots never
 resume suspended caches: those use fresh bootstrap with the existing epoch guards.
+For the selected HTML entrypoint, the same authenticated GET prepares fresh
+blocked and compatible contexts, removing the initial create/renew round trip.
+The browser chooses using local consent, checks origin/version/path, and consumes
+the descriptor once. The first valid preview request retires the unused option;
+external access is never prepared. An unavailable, expired or mismatched descriptor
+uses the normal API path. HEAD requests do not allocate contexts.
 SSE ready/reconnect continues to reconcile mutable artifact state in the background.
 Cold visits retain the loading indicator. Definitive failures remove the reading
 view; cached bytes never bypass authorization for server access.
@@ -261,9 +267,12 @@ runtime is embedded in the document response before publisher scripts, removing 
 preview HTML and scripts use negotiated gzip; their validators cover the runtime.
 
 Protected document context identities are retained per tab so reopened previews
-can reuse their URLs. Every reopening authenticates renewal; the gate repeats
-unless compatibility consent is remembered. External-access and device grants
-never persist. Deletion clears app content state
+can reuse their URLs during in-app navigation. Eligible full HTML reloads receive
+fresh contexts and different resource URLs, trading preview HTTP-cache reuse for
+one fewer serial request. Older contexts expire normally rather than being
+revoked under another tab. Server capacity stays bounded; failed preparation
+falls back to authenticated renewal of a retained context. The gate repeats unless
+compatibility consent is remembered. External-access and device grants never persist. Deletion clears app content state
 and context identities when detected, but physical HTTP-cache eviction belongs to
 the browser. See the security reference for expiry and retention bounds.
 

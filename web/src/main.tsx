@@ -7,6 +7,8 @@ import { ApiError, loadBoot } from "./api.ts";
 import { takeApplicationBootstrap } from "./application-bootstrap.ts";
 import { Login } from "./components/Login.tsx";
 import { readDisplayPreference } from "./display-storage.ts";
+import { previewCompatibility } from "./preview-protection.ts";
+import { previewSessions } from "./preview-sessions.ts";
 import { clampFont } from "./settings.ts";
 import "./main.css";
 
@@ -73,6 +75,12 @@ async function main() {
       ["artifact-files", boot.artifact.id, boot.manifest.versionSeq],
       boot.manifest.files,
     );
+  if (boot.preview?.applicationOrigin === location.origin && boot.artifact?.kind === "html") {
+    const context = boot.preview[previewCompatibility.accepted() ? "compatible" : "blocked"];
+    const version = boot.artifact.versions.find((version) => version.seq === context.versionSeq);
+    if (context.artifactId === boot.artifact.id && version?.kind === "html")
+      previewSessions.seed(context, version.entrypoint);
+  }
 
   root.render(
     <StrictMode>

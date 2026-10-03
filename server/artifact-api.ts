@@ -84,6 +84,7 @@ export function createArtifactApi(
       }
     }
     let manifest: ApplicationBootstrap["manifest"] = null;
+    let preview: ApplicationBootstrap["preview"] = null;
     if (artifact?.kind === "html") {
       const selected = new URL(request.url).searchParams.get("version");
       const seq =
@@ -99,8 +100,30 @@ export function createArtifactApi(
         if (Buffer.byteLength(JSON.stringify(files)) <= 64 * 1024)
           manifest = { versionSeq: version.seq, files };
       }
+      if (version?.kind === "html" && options.previews && request.method === "GET") {
+        // Navigation has no Origin header. A configured public origin also
+        // covers a proxy that rewrites Host; the browser accepts this seed only
+        // when that application origin matches its own location.
+        const origin =
+          request.headers.get("origin") ??
+          (policy.applicationOrigins?.size === 1
+            ? [...policy.applicationOrigins][0]
+            : new URL(request.url).origin);
+        try {
+          preview = options.previews.contexts.prepare(
+            artifact.id,
+            version.seq,
+            version.entrypoint,
+            origin,
+          );
+        } catch (error) {
+          // Optional setup must not make the workspace unavailable. The normal
+          // API path reports configuration/capacity errors or renews a saved ID.
+          if (!(error instanceof ArtifactError)) throw error;
+        }
+      }
     }
-    return { path, boot, artifact, manifest };
+    return { path, boot, artifact, manifest, preview };
   };
   app.onError((error, c) =>
     error instanceof ArtifactError

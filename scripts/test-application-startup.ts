@@ -13,6 +13,7 @@ import { previewSupport } from "../server/preview-support.ts";
 // Production SPA, isolated auth/storage, and a fresh browser. The latency is
 // injected before API/preview responses, never attributed to database work.
 const { chromium } = await import(process.env.R3_TEST_PLAYWRIGHT!);
+const compatible = process.env.R3_TEST_COMPATIBLE === "1";
 const assets = await loadApplicationAssets({ index: join(import.meta.dir, "../web/index.html") });
 const controllerBuild = await Bun.build({
   entrypoints: [join(import.meta.dir, "../web/src/api.ts")],
@@ -56,7 +57,13 @@ const api = createArtifactApi(
   },
   { previews: preview },
 );
-const application = createApplicationResponse(assets, api.bootstrap);
+let mismatchPreviewOrigin = false;
+const application = createApplicationResponse(assets, (request) => {
+  const data = api.bootstrap(request);
+  if (mismatchPreviewOrigin && data?.preview)
+    data.preview.applicationOrigin = "https://other.example";
+  return data;
+});
 let detailHold: Promise<void> | null = null;
 let documentHold: Promise<void> | null = null;
 let documentCaptured = () => {};
@@ -114,6 +121,10 @@ const browser = await chromium.launch({
 });
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  if (compatible)
+    await context.addInitScript(() =>
+      localStorage.setItem("r3:preview-compatibility:v1", "accepted"),
+    );
   const login = storage.authentication.createLoginToken("application startup acceptance");
   const session = storage.authentication.mintSession(login.info.id);
   await context.addCookies([
@@ -141,6 +152,11 @@ try {
   await page.goto(url);
   await ready();
   const visibleMs = Math.round(performance.now() - navigation);
+  assert.equal(
+    trace.some((r) => r.path.startsWith("/api/previews/") || r.path.endsWith("/previews")),
+    false,
+    "HTML supplies preview setup without a separate create or renewal request",
+  );
   assert.equal(
     trace.some((r) => r.path === "/api/boot"),
     false,
@@ -172,10 +188,17 @@ try {
   );
   const check = trace.find((r) => r.path.endsWith("/r3/check"))!;
   const content = trace.find((r) => r.path.endsWith("/files/index.html"))!;
-  assert.ok(
-    content.at >= check.end!,
-    "embedded membership does not bypass successful verification",
-  );
+  if (compatible)
+    assert.equal(
+      trace.some((r) => /\/(?:r3\/(?:gate|check)|outside\/check)$/.test(r.path)),
+      false,
+      "embedded compatible setup preserves the no-probe choice",
+    );
+  else
+    assert.ok(
+      content.at >= check.end!,
+      "embedded membership does not bypass successful verification",
+    );
   await page.getByRole("button", { name: "Artifact details and actions" }).click();
   await page
     .getByRole("dialog", { name: "Artifact details" })
@@ -204,6 +227,19 @@ try {
   releaseDetail();
   detailHold = null;
   eventsHold = false;
+  await page.goto("about:blank");
+
+  // A proxy/canonical-origin mismatch must use authenticated setup for this
+  // actual application origin rather than navigating to an unsuitable seed.
+  mismatchPreviewOrigin = true;
+  trace.length = 0;
+  await page.goto(url);
+  await ready();
+  assert.ok(
+    trace.some((r) => r.path.startsWith("/api/previews/") || r.path.endsWith("/previews")),
+    "mismatched embedded origin falls back to authenticated preview setup",
+  );
+  mismatchPreviewOrigin = false;
   await page.goto("about:blank");
 
   // Cross-site entry omits Strict cookies; the loaded app must recover through
@@ -290,7 +326,7 @@ try {
     "subsequent same-site opening uses inline bootstrap again",
   );
   console.log(
-    "Application startup: embedded auth/detail, deferred SSE, skipped HTML palette, Strict-cookie entry, logout race, and cache resumption passed",
+    "Application startup: embedded auth/detail/context, zero setup request, origin fallback, deferred SSE, Strict-cookie entry, logout race, and cache resumption passed",
   );
 } finally {
   await browser.close();

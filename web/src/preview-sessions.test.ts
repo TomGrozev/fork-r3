@@ -81,6 +81,52 @@ test("protected preview URLs survive view switches and refresh, with authenticat
   );
 });
 
+test("authenticated HTML supplies the first context once; later visits still renew", async () => {
+  const f = fixture();
+  const context = await f.api.createPreview("artifact_example", 1, "index.html", "compatible");
+  const sessions = new PreviewSessions(f.api, () => f.storage);
+  sessions.seed(context, "index.html");
+  const [first, concurrent] = await Promise.all([
+    sessions.acquire("artifact_example", 1, "index.html", "compatible"),
+    sessions.acquire("artifact_example", 1, "index.html", "compatible"),
+  ]);
+  expect(first.id).toBe(context.id);
+  expect(concurrent.id).toBe(context.id);
+  expect(f.counts()).toEqual({ created: 1, renewed: 0 });
+  sessions.release(first);
+  sessions.release(concurrent);
+  await sessions.acquire("artifact_example", 1, "index.html", "compatible");
+  expect(f.counts()).toEqual({ created: 1, renewed: 1 });
+  const second = await f.api.createPreview("artifact_example", 2, "index.html", "compatible");
+  sessions.seed(second, "index.html");
+  sessions.forget("artifact_example");
+  expect(f.revoked).toContain(second.id);
+  expect((await sessions.acquire("artifact_example", 2, "index.html", "compatible")).id).not.toBe(
+    second.id,
+  );
+});
+
+test("expired or differently scoped HTML contexts never replace the requested acquisition", async () => {
+  const f = fixture();
+  const context = await f.api.createPreview("artifact_example", 1, "index.html", "blocked");
+  const sessions = new PreviewSessions(f.api, () => f.storage);
+  sessions.seed(context, "index.html");
+  const compatible = await sessions.acquire("artifact_example", 1, "index.html", "compatible");
+  expect(compatible.id).not.toBe(context.id);
+  expect(compatible.network).toBe("compatible");
+  const wrongVersion = await sessions.acquire("artifact_example", 2, "index.html", "blocked");
+  expect(wrongVersion.id).not.toBe(context.id);
+  sessions.seed({ ...context, expiresAt: new Date(0).toISOString() }, "index.html");
+  expect((await sessions.acquire("artifact_example", 1, "index.html", "blocked")).id).not.toBe(
+    context.id,
+  );
+  const other = await f.api.createPreview("artifact_other", 1, "index.html", "blocked");
+  sessions.seed(other, "wrong.html");
+  expect((await sessions.acquire("artifact_other", 1, "wrong.html", "blocked")).id).not.toBe(
+    other.id,
+  );
+});
+
 test("external grants never persist and a failed authentication never falls back to creation", async () => {
   const f = fixture();
   const sessions = new PreviewSessions(f.api, () => f.storage);

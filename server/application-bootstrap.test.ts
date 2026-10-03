@@ -7,7 +7,10 @@ import type { ApplicationBootstrap } from "../shared/types.ts";
 import { createApplicationResponse } from "./application-assets.ts";
 import { createArtifactApi } from "./artifact-api.ts";
 import { type ArtifactStorage, openArtifactStorage } from "./artifact-storage.ts";
+import { ArtifactError } from "./artifact-validation.ts";
 import { COOKIE_NAME } from "./auth.ts";
+import { PreviewHost } from "./preview-host.ts";
+import { previewSupport } from "./preview-support.ts";
 
 let root: string;
 let storage: ArtifactStorage;
@@ -17,6 +20,7 @@ let token: string;
 let cookie: string;
 let tokenId: string;
 let artifactId: string;
+let previews: PreviewHost;
 const title = "</script><script>window.injected=true</script><!-- $& $` $' </head>";
 const shell =
   '<!doctype html><html><head><title>r3</title></head><body><div id="root"></div></body></html>';
@@ -31,6 +35,7 @@ const snapshot = (html: string): ApplicationBootstrap | null => {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "r3-bootstrap-"));
   storage = await openArtifactStorage({ databasePath: join(root, "store.sqlite") });
+  previews = new PreviewHost(storage.artifacts, undefined, previewSupport);
   token = randomBytes(32).toString("base64url");
   const login = storage.authentication.createLoginToken("bootstrap fixture");
   tokenId = login.info.id;
@@ -44,13 +49,17 @@ beforeEach(async () => {
 });
 function setup(requireLogin: boolean) {
   api?.close();
-  api = createArtifactApi(storage, {
-    token,
-    requireLogin,
-    version: "test",
-    allowedHost: (host) => host === "localhost",
-    applicationOrigins: new Set(["https://reviews.example"]),
-  });
+  api = createArtifactApi(
+    storage,
+    {
+      token,
+      requireLogin,
+      version: "test",
+      allowedHost: (host) => host === "localhost",
+      applicationOrigins: new Set(["https://reviews.example"]),
+    },
+    { previews },
+  );
   respond = createApplicationResponse(
     {
       index: {
@@ -70,6 +79,7 @@ function setup(requireLogin: boolean) {
 }
 afterEach(async () => {
   api.close();
+  previews.close();
   storage.close();
   await rm(root, { recursive: true, force: true });
 });
@@ -177,6 +187,38 @@ test("bootstrap embeds only the selected immutable HTML manifest, with bounded f
   ]);
   expect(read().manifest).toBeNull();
   expect(read("?version=1").manifest?.versionSeq).toBe(1);
+});
+
+test("HTML prepares exact-version restrictive contexts after auth, with no external grant", async () => {
+  await publish(1);
+  await publish(2);
+  const prepared = api.bootstrap(request(`/${artifactId}?version=1`, { cookie }))!.preview!;
+  expect(prepared.applicationOrigin).toBe("https://reviews.example");
+  expect(prepared.blocked).toMatchObject({ artifactId, versionSeq: 1, network: "blocked" });
+  expect(prepared.compatible).toMatchObject({ artifactId, versionSeq: 1, network: "compatible" });
+  expect(prepared.blocked.origin).toBe(prepared.applicationOrigin);
+  expect(Object.keys(prepared).sort()).toEqual(["applicationOrigin", "blocked", "compatible"]);
+  expect(prepared.blocked.id).not.toBe(prepared.compatible.id);
+  expect(api.bootstrap(request(`/${artifactId}?version=99`, { cookie }))!.preview).toBeNull();
+  expect(api.bootstrap(request(`/${artifactId}`, { cookie }, "HEAD"))!.preview).toBeNull();
+  expect(api.bootstrap(request(`/${artifactId}`, { cookie, origin: "null" }))).toBeNull();
+  expect(api.bootstrap(request(`/${artifactId}`))).toBeNull();
+  const local = api.bootstrap(request(`/${artifactId}`, { cookie, origin: "http://localhost" }))!;
+  expect(local.preview?.applicationOrigin).toBe("http://localhost");
+  expect(local.preview?.blocked.versionSeq).toBe(2);
+  storage.authentication.revokeToken(tokenId);
+  expect(api.bootstrap(request(`/${artifactId}`, { cookie }))).toBeNull();
+});
+
+test("unavailable optional preview preparation leaves the authenticated workspace usable", async () => {
+  await publish(1);
+  previews.contexts.prepare = () => {
+    throw new ArtifactError("Too many open preview contexts", 413);
+  };
+  const data = snapshot(await (await respond(request(`/${artifactId}`, { cookie }))).text())!;
+  expect(data.artifact?.id).toBe(artifactId);
+  expect(data.manifest?.versionSeq).toBe(1);
+  expect(data.preview).toBeNull();
 });
 
 test("artifact labels include every referenced role, omit unrelated sessions, and stay current", async () => {

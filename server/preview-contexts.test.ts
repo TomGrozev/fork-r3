@@ -54,6 +54,35 @@ afterEach(async () => {
 });
 const request = (url: string) => new Request(url, { headers: { host: new URL(url).host } });
 
+test("prepared modes retire only their unused alternative on the first valid request", () => {
+  for (const selected of ["blocked", "compatible"] as const) {
+    const prepared = contexts.prepare(id, 1, "notes/a # b?.md", "https://app.example");
+    const chosen = prepared[selected];
+    const unused = prepared[selected === "blocked" ? "compatible" : "blocked"];
+    expect(() => contexts.forRequest(new Request(chosen.gateUrl))).toThrow("unavailable");
+    expect(contexts.renew(unused.id).id).toBe(unused.id);
+    expect(contexts.forRequest(request(chosen.gateUrl)).network).toBe(selected);
+    expect(() => contexts.renew(unused.id)).toThrow("unavailable");
+    expect(contexts.forRequest(request(chosen.documentUrl)).id).toBe(chosen.id);
+  }
+  const another = contexts.prepare(id, 1, "notes/a # b?.md", "https://app.example");
+  const independent = contexts.prepare(id, 1, "notes/a # b?.md", "https://app.example");
+  contexts.forRequest(request(another.compatible.documentUrl));
+  expect(contexts.forRequest(request(independent.blocked.gateUrl)).network).toBe("blocked");
+  time += 60 * 60_000;
+  expect(() => contexts.renew(another.compatible.id)).toThrow("expired");
+});
+
+test("failed preparation at capacity rolls back its partial grant", () => {
+  for (let i = 0; i < 511; i++) contexts.create(id, 1, "notes/a # b?.md", "https://app.example");
+  expect(() => contexts.prepare(id, 1, "notes/a # b?.md", "https://app.example")).toThrow(
+    "Too many open preview contexts",
+  );
+  expect(() => contexts.create(id, 1, "notes/a # b?.md", "https://app.example")).not.toThrow();
+  time += 60 * 60_000;
+  expect(() => contexts.prepare(id, 1, "notes/a # b?.md", "https://app.example")).not.toThrow();
+});
+
 test("each preview grants one publication through an exact, temporary capability path", () => {
   const first = contexts.create(id, 1, "notes/a # b?.md", "https://app.example");
   const second = contexts.create(id, 2, "notes/a # b?.md", "https://app.example");

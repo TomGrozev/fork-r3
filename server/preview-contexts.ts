@@ -70,6 +70,7 @@ export function previewRoot(scope: Pick<PreviewScope, "origin" | "id">): string 
 // isolation comes from the opaque sandbox, not URL paths or shared storage.
 export class PreviewContexts {
   private readonly contexts = new Map<string, PreviewScope>();
+  private readonly alternatives = new Map<string, string>();
   private readonly base: URL | undefined;
   constructor(
     private readonly artifacts: ArtifactStore,
@@ -123,6 +124,22 @@ export class PreviewContexts {
     return this.describe(scope);
   }
 
+  // The HTML request cannot read localStorage consent. Prepare both restrictive
+  // modes; the first preview request retires the unused alternative. External
+  // access is never prepared by navigation. Existing expiry/capacity bounds apply.
+  prepare(artifactId: string, seq: number, path: string, applicationOrigin: string) {
+    const blocked = this.create(artifactId, seq, path, applicationOrigin, "blocked");
+    try {
+      const compatible = this.create(artifactId, seq, path, applicationOrigin, "compatible");
+      this.alternatives.set(blocked.id, compatible.id);
+      this.alternatives.set(compatible.id, blocked.id);
+      return { applicationOrigin, blocked, compatible };
+    } catch (error) {
+      this.revoke(blocked.id);
+      throw error;
+    }
+  }
+
   private describe(scope: PreviewScope): ArtifactPreviewContext {
     return {
       id: scope.id,
@@ -144,19 +161,19 @@ export class PreviewContexts {
 
   private expire(): void {
     for (const scope of this.contexts.values())
-      if (scope.expiresAt <= this.now()) this.contexts.delete(scope.id);
+      if (scope.expiresAt <= this.now()) this.revoke(scope.id);
   }
 
   private get(id: string): PreviewScope {
     const scope = this.contexts.get(id);
     if (!scope || scope.expiresAt <= this.now()) {
-      this.contexts.delete(id);
+      this.revoke(id);
       throw new ArtifactError("Preview context expired or unavailable", 404);
     }
     try {
       this.artifacts.version(scope.artifactId, scope.versionSeq);
     } catch (error) {
-      this.contexts.delete(id);
+      this.revoke(id);
       throw error;
     }
     return scope;
@@ -180,6 +197,8 @@ export class PreviewContexts {
       !(scope.origin === scope.applicationOrigin && applicationOrigins?.has(scope.origin))
     )
       throw new ArtifactError("Preview context unavailable", 404);
+    const alternative = this.alternatives.get(scope.id);
+    if (alternative) this.revoke(alternative);
     return scope;
   }
 
@@ -189,14 +208,17 @@ export class PreviewContexts {
     return this.describe(scope);
   }
   revoke(id: string): void {
+    const alternative = this.alternatives.get(id);
+    if (alternative) this.alternatives.delete(alternative);
+    this.alternatives.delete(id);
     this.contexts.delete(id);
   }
   revokeArtifact(id: string): void {
-    for (const scope of this.contexts.values())
-      if (scope.artifactId === id) this.contexts.delete(scope.id);
+    for (const scope of this.contexts.values()) if (scope.artifactId === id) this.revoke(scope.id);
   }
   close(): void {
     this.contexts.clear();
+    this.alternatives.clear();
   }
 }
 

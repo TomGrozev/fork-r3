@@ -16,13 +16,14 @@ const keyOf = (id: string, seq: number, path: string, network: string) =>
   JSON.stringify([id, seq, path, network]);
 
 // Retain only protected context identities, not documents or permission grants.
-// Authenticated renewal and the iframe gate still run on every visit. Stable
-// URLs let the browser's HTTP cache reuse bytes across visits and page refreshes.
+// Authenticated HTML may supply the first context; subsequent acquisitions renew
+// retained IDs. Gate admission or remembered consent still precedes execution.
 export class PreviewSessions {
   private readonly saved = new Map<string, Saved>();
   private readonly live = new Map<string, number>();
   private readonly pending = new Map<string, Promise<ArtifactPreviewContext>>();
   private readonly generations = new Map<string, number>();
+  private readonly initial = new Map<string, ArtifactPreviewContext>();
 
   constructor(
     private readonly api: PreviewApi,
@@ -57,6 +58,17 @@ export class PreviewSessions {
     }
   }
 
+  seed(context: ArtifactPreviewContext, path: string) {
+    if (
+      context.network === "external" ||
+      context.presentation !== "document" ||
+      context.documentUrl !==
+        context.resourceRoot + path.split("/").map(encodeURIComponent).join("/")
+    )
+      return;
+    this.initial.set(keyOf(context.artifactId, context.versionSeq, path, context.network), context);
+  }
+
   private revoke(id: string) {
     void this.api.revokePreview(id).catch(() => {});
   }
@@ -82,9 +94,11 @@ export class PreviewSessions {
     if (!pending) {
       const generation = this.generations.get(artifactId);
       pending = (async () => {
-        let context: ArtifactPreviewContext | undefined;
+        let context = this.initial.get(key);
+        this.initial.delete(key);
+        if (context && !(Date.parse(context.expiresAt) > Date.now())) context = undefined;
         const saved = this.saved.get(key);
-        if (saved) {
+        if (saved && !context) {
           try {
             const renewed = await this.api.renewPreview(saved.id);
             if (
@@ -140,6 +154,11 @@ export class PreviewSessions {
 
   forget(artifactId: string) {
     this.generations.set(artifactId, (this.generations.get(artifactId) ?? 0) + 1);
+    for (const [key, context] of this.initial)
+      if (context.artifactId === artifactId) {
+        this.initial.delete(key);
+        this.revoke(context.id);
+      }
     for (const key of this.pending.keys())
       if (key.startsWith(`[${JSON.stringify(artifactId)},`)) this.pending.delete(key);
     for (const [key, entry] of this.saved)

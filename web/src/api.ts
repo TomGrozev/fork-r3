@@ -34,6 +34,7 @@ export async function loadBoot(initial?: ApplicationBootstrap): Promise<{
   needsAuth: boolean;
   artifact?: ArtifactDetail;
   manifest?: ApplicationBootstrap["manifest"];
+  preview?: ApplicationBootstrap["preview"];
 }> {
   if (initial) {
     const suspended = await Promise.all([
@@ -46,7 +47,9 @@ export async function loadBoot(initial?: ApplicationBootstrap): Promise<{
       // this snapshot: logout may have raced the document or its bundle load.
       return {
         needsAuth: false,
-        ...(initial.artifact ? { artifact: initial.artifact, manifest: initial.manifest } : {}),
+        ...(initial.artifact
+          ? { artifact: initial.artifact, manifest: initial.manifest, preview: initial.preview }
+          : {}),
       };
     }
   }
