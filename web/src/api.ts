@@ -3,6 +3,7 @@ import { draftImages } from "./attachment-drafts.ts";
 // Artifact operations use artifact-api.ts and the shared ArtifactClient.
 
 import { markdownCache } from "./markdown-cache.ts";
+import { clearPreviewResumeHints } from "./preview-resume.ts";
 import type {
   ApplicationBootstrap,
   ArtifactDetail,
@@ -124,6 +125,7 @@ export const api = {
     try {
       return await req<{ ok: true }>("POST", "/api/auth/logout");
     } finally {
+      clearPreviewResumeHints();
       await markdownCache.suspend();
       await draftImages.clear();
     }

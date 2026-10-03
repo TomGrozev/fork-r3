@@ -1,6 +1,7 @@
 import { ArtifactApiError } from "../../shared/artifact-client.ts";
 import type { ArtifactPreviewContext, ArtifactPreviewNetwork } from "../../shared/artifacts.ts";
 import { artifactApi } from "./artifact-api.ts";
+import { rememberPreviewContext } from "./preview-resume.ts";
 
 type PreviewApi = Pick<typeof artifactApi, "createPreview" | "renewPreview" | "revokePreview">;
 type Saved = {
@@ -28,6 +29,7 @@ export class PreviewSessions {
   constructor(
     private readonly api: PreviewApi,
     private readonly storage: () => Pick<Storage, "getItem" | "setItem"> | null,
+    private readonly remember?: (context: ArtifactPreviewContext) => void,
   ) {
     try {
       const entries: unknown = JSON.parse(storage()?.getItem(STORAGE_KEY) ?? "[]");
@@ -58,7 +60,7 @@ export class PreviewSessions {
     }
   }
 
-  seed(context: ArtifactPreviewContext, path: string) {
+  seed(context: ArtifactPreviewContext, path: string, retained = false) {
     if (
       context.network === "external" ||
       context.presentation !== "document" ||
@@ -66,7 +68,12 @@ export class PreviewSessions {
         context.resourceRoot + path.split("/").map(encodeURIComponent).join("/")
     )
       return;
-    this.initial.set(keyOf(context.artifactId, context.versionSeq, path, context.network), context);
+    const key = keyOf(context.artifactId, context.versionSeq, path, context.network);
+    const saved = this.saved.get(key);
+    // Shared cookies may advertise other tabs' contexts. Reuse only this tab's
+    // exact handle. Missing/evicted hints must not replace a still-valid URL.
+    if (saved ? saved.id !== context.id : retained) return;
+    this.initial.set(key, context);
   }
 
   private revoke(id: string) {
@@ -124,6 +131,7 @@ export class PreviewSessions {
           this.saved.set(key, { artifactId, seq, path, network, id: context.id });
           this.trim();
           this.persist();
+          this.remember?.(context);
         }
         return context;
       })();
@@ -170,4 +178,8 @@ export class PreviewSessions {
   }
 }
 
-export const previewSessions = new PreviewSessions(artifactApi, () => sessionStorage);
+export const previewSessions = new PreviewSessions(
+  artifactApi,
+  () => sessionStorage,
+  (context) => rememberPreviewContext(context.resumeKey),
+);

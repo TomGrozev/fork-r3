@@ -141,6 +141,7 @@ atomically clears durable records; restore requires a new publication/registrati
   the immutable mode. `PATCH /api/previews/:id` renews expiry without changing policy;
   `DELETE` revokes it. Changing policy requires a new context.
   The response contains scoped gate/document/utility URLs and `resourceRoot`,
+  plus an optional non-authorizing `resumeKey` for authenticated HTML navigation,
   never application credentials. `origin` is the transport origin; rendered
   documents have opaque origins.
 - `GET /api/health` reports version and `protocol: artifacts-v1`; `GET /api/boot`
@@ -149,12 +150,15 @@ atomically clears durable records; restore requires a new publication/registrati
   `ArtifactDetail`, using the same contracts to seed the initial workspace.
   For HTML artifacts it also embeds the selected version’s immutable file manifest
   when at most 128 files and 64 KiB of JSON. Larger manifests use the parallel API
-  read. An HTML GET may embed scoped blocked/compatible preview setup for that
-  version’s entrypoint; the browser selects using its saved consent and validates
-  the application origin. The first context use retires the unused alternative.
-  Missing, expired or mismatched setup uses the existing create/renew routes.
-  External grants are never embedded; full reloads trade retained preview URLs
-  for one fewer serial request. Unknown explicit versions never substitute the latest version.
+  read. An HTML GET may embed `preview: { applicationOrigin, contexts, retained }`
+  for that version’s entrypoint. After authentication, bounded application-cookie
+  resume hints renew matching restrictive contexts with stable URLs; without a
+  match, setup prepares a blocked/compatible pair. The browser selects using saved
+  consent, validates origin and scope, and accepts a retained descriptor only for
+  its exact tab-local saved context ID. First use retires an unused prepared
+  alternative. Missing hints or mismatched setup use the existing create/renew
+  routes, preserving a saved URL when possible. External grants are never embedded.
+  Unknown explicit versions never substitute the latest version.
   These documents are private/no-store; cross-site entry, absent session cookies,
   and suspended browser caches fall back to `/api/boot`. API checks remain on
   every data request, and SSE ready still triggers background reconciliation.

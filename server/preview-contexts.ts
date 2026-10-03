@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 import {
   type ArtifactPreviewContext,
@@ -10,6 +10,7 @@ import type { ArtifactStore } from "./artifacts.ts";
 
 const CONTEXT_TTL = 60 * 60 * 1000;
 const MAX_CONTEXTS = 512;
+const resumeKey = (id: string) => `r${createHash("sha256").update(id).digest("hex").slice(0, 32)}`;
 export const PREVIEW_PREFIX = "/__r3_preview/";
 
 function localOrigin(url: URL): boolean {
@@ -71,6 +72,7 @@ export function previewRoot(scope: Pick<PreviewScope, "origin" | "id">): string 
 export class PreviewContexts {
   private readonly contexts = new Map<string, PreviewScope>();
   private readonly alternatives = new Map<string, string>();
+  private readonly resumable = new Map<string, string>();
   private readonly base: URL | undefined;
   constructor(
     private readonly artifacts: ArtifactStore,
@@ -121,7 +123,30 @@ export class PreviewContexts {
       expiresAt: this.now() + CONTEXT_TTL,
     });
     this.contexts.set(id, scope);
+    this.resumable.set(resumeKey(id), id);
     return this.describe(scope);
+  }
+
+  // Call only after application authentication. A hint cannot name a resource
+  // capability and cannot renew a different publication, origin, path or policy.
+  resume(keys: string[], artifactId: string, seq: number, path: string, applicationOrigin: string) {
+    this.expire();
+    const result: ArtifactPreviewContext[] = [];
+    for (const key of keys) {
+      const id = this.resumable.get(key);
+      const scope = id ? this.contexts.get(id) : undefined;
+      if (
+        scope &&
+        scope.artifactId === artifactId &&
+        scope.versionSeq === seq &&
+        scope.entryPath === path &&
+        scope.applicationOrigin === applicationOrigin &&
+        scope.presentation === "document" &&
+        scope.network !== "external"
+      )
+        result.push(this.renew(scope.id));
+    }
+    return result;
   }
 
   // The HTML request cannot read localStorage consent. Prepare both restrictive
@@ -143,6 +168,7 @@ export class PreviewContexts {
   private describe(scope: PreviewScope): ArtifactPreviewContext {
     return {
       id: scope.id,
+      resumeKey: resumeKey(scope.id),
       artifactId: scope.artifactId,
       versionSeq: scope.versionSeq,
       origin: scope.origin,
@@ -208,6 +234,7 @@ export class PreviewContexts {
     return this.describe(scope);
   }
   revoke(id: string): void {
+    this.resumable.delete(resumeKey(id));
     const alternative = this.alternatives.get(id);
     if (alternative) this.alternatives.delete(alternative);
     this.alternatives.delete(id);
@@ -219,6 +246,7 @@ export class PreviewContexts {
   close(): void {
     this.contexts.clear();
     this.alternatives.clear();
+    this.resumable.clear();
   }
 }
 

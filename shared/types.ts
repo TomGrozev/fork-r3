@@ -138,8 +138,8 @@ export interface ApplicationBootstrap {
   manifest?: { versionSeq: number; files: import("./artifacts.ts").ArtifactFile[] } | null;
   preview?: {
     applicationOrigin: string;
-    blocked: import("./artifacts.ts").ArtifactPreviewContext;
-    compatible: import("./artifacts.ts").ArtifactPreviewContext;
+    contexts: import("./artifacts.ts").ArtifactPreviewContext[];
+    retained: boolean;
   } | null;
 }
 

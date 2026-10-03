@@ -80,10 +80,13 @@ no-login mode retains its existing bootstrap trust boundary. The embedded detail
 uses the API's complete shape and collaboration state; it seeds the browser query
 cache, while SSE ready/reconnect still reconciles current state in the background.
 The same authenticated snapshot may include the selected HTML version’s bounded
-file manifest. For an HTML GET, it may also prepare fresh blocked and compatible
-contexts for the selected version’s declared entrypoint. The browser selects from
-its local consent state only after bootstrap and cache-suspension checks, verifies
-the application origin and artifact/version/path, and consumes the setup once.
+file manifest. For an HTML GET, it may also renew existing restrictive contexts
+for the selected version’s declared entrypoint using bounded resume hints, or
+prepare a blocked/compatible pair when no live hint matches. The browser selects
+from its local consent state only after bootstrap and cache-suspension checks,
+verifies the application origin and artifact/version/path, and consumes setup once.
+A retained descriptor must match this tab’s exact sessionStorage context ID.
+Another tab’s hint cannot make the client adopt that tab’s revocation lifetime.
 It still requires manifest membership and gate success or remembered consent.
 The first valid preview request retires the unused mode; no cleanup HTTP request
 is needed. External access is never prepared. HEAD and invalid explicit versions
@@ -154,7 +157,7 @@ for network enforcement. The gate reports its result directly to the trusted
 workspace, which controls publisher execution. There is no server challenge,
 verification POST, or User-Agent registration. The temporary context capability
 authorizes bytes independently of the gate; `Origin:null` is not an authentication
-principal. No preview cookie is issued or accepted. Gate HTML has no CORS headers.
+principal. No cookie authorizes preview resources. Gate HTML has no CORS headers.
 Direct document navigation remains refused and `frame-ancestors` permits only the
 application origin. The workspace admits interactive publisher content after
 successful browser checks or remembered compatibility consent. Hiding an executing
@@ -197,13 +200,19 @@ The workspace retains up to 16 inactive protected document context identities in
 tab-scoped sessionStorage, excluding external contexts, device grants, and document
 bytes. Mounted contexts are not evicted. In-app reopening authenticates renewal
 and repeats the gate unless compatibility consent is remembered; only a missing
-or expired context permits recreation. Eligible full HTML navigations instead
-supply fresh contexts, eliminating the serial setup request but changing resource
-URLs and losing HTTP-cache identity across those reloads. Existing contexts are
-not revoked merely because another navigation prepares a context: another tab
-may still use them. Abandoned contexts retain the one-hour expiry and the shared
-512-context cap. Fresh preparation rolls back a partial pair at capacity; a
-retained context can still renew through the fallback API. Deletion removes saved handles and revokes
+or expired context permits recreation. Full HTML navigations renew those same
+identities without a separate request when the optional application hint cookie
+names a matching live scope. The cookie contains at most 16 truncated SHA-256
+lookup keys, not URL capabilities, credentials or consent. It is a session cookie
+with Path=/, SameSite=Strict and Secure on HTTPS, and logout clears it. Only the
+authenticated application bootstrap resolves hints; matching requires the exact
+artifact, version, entrypoint, application origin and restrictive document policy.
+The resource dispatcher never accepts hints as authorization. Missing, evicted or
+unusable hints fall back to authenticated API renewal of the tab’s saved ID,
+preserving URLs. A new independent tab rejects other tabs’ retained descriptors
+and creates its own context through the API. Abandoned contexts retain the
+one-hour expiry and shared 512-context cap. Fresh preparation rolls back a partial
+pair at capacity; existing contexts remain renewable. Deletion removes saved handles and revokes
 their contexts; an unavailable artifact also clears its handles when revisited.
 Inactive retained capabilities expire normally. Media contexts are released normally.
 

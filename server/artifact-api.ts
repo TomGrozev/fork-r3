@@ -6,6 +6,7 @@ import {
   type ArtifactState,
   artifactAgentIds,
 } from "../shared/artifacts.ts";
+import { PREVIEW_RESUME_COOKIE, previewResumeKeys } from "../shared/preview-resume.ts";
 import type { ApplicationBootstrap } from "../shared/types.ts";
 import {
   type ArtifactAuthPolicy,
@@ -110,12 +111,30 @@ export function createArtifactApi(
             ? [...policy.applicationOrigins][0]
             : new URL(request.url).origin);
         try {
-          preview = options.previews.contexts.prepare(
+          const keys = previewResumeKeys(
+            parseCookie(request.headers.get("cookie") ?? "")[PREVIEW_RESUME_COOKIE],
+          );
+          const contexts = options.previews.contexts.resume(
+            keys,
             artifact.id,
             version.seq,
             version.entrypoint,
             origin,
           );
+          if (contexts.length) preview = { applicationOrigin: origin, contexts, retained: true };
+          else {
+            const prepared = options.previews.contexts.prepare(
+              artifact.id,
+              version.seq,
+              version.entrypoint,
+              origin,
+            );
+            preview = {
+              applicationOrigin: origin,
+              contexts: [prepared.blocked, prepared.compatible],
+              retained: false,
+            };
+          }
         } catch (error) {
           // Optional setup must not make the workspace unavailable. The normal
           // API path reports configuration/capacity errors or renews a saved ID.

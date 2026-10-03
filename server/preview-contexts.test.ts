@@ -54,6 +54,27 @@ afterEach(async () => {
 });
 const request = (url: string) => new Request(url, { headers: { host: new URL(url).host } });
 
+test("resume hints renew only matching live scopes and never authorize resource reads", () => {
+  const context = contexts.create(id, 1, "notes/a # b?.md", "https://app.example", "compatible");
+  const keys = [context.resumeKey!];
+  time += 30 * 60_000;
+  const [resumed] = contexts.resume(keys, id, 1, "notes/a # b?.md", "https://app.example");
+  expect(resumed.documentUrl).toBe(context.documentUrl);
+  expect(resumed.resourceRoot).toBe(context.resourceRoot);
+  expect(Date.parse(resumed.expiresAt)).toBe(time + 60 * 60_000);
+  expect(contexts.resume(keys, id, 2, "notes/a # b?.md", "https://app.example")).toEqual([]);
+  expect(contexts.resume(keys, id, 1, "data.json", "https://app.example")).toEqual([]);
+  expect(contexts.resume(keys, id, 1, "notes/a # b?.md", "https://other.example")).toEqual([]);
+  expect(
+    contexts.resume(keys, "artifact_other", 1, "notes/a # b?.md", "https://app.example"),
+  ).toEqual([]);
+  expect(() =>
+    contexts.forRequest(request(context.documentUrl.replace(context.id, context.resumeKey!))),
+  ).toThrow("unavailable");
+  time += 60 * 60_000;
+  expect(contexts.resume(keys, id, 1, "notes/a # b?.md", "https://app.example")).toEqual([]);
+});
+
 test("prepared modes retire only their unused alternative on the first valid request", () => {
   for (const selected of ["blocked", "compatible"] as const) {
     const prepared = contexts.prepare(id, 1, "notes/a # b?.md", "https://app.example");

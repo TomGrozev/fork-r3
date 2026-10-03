@@ -231,12 +231,16 @@ authorize publisher execution without browser verification or remembered risk
 consent. The shell uses private/no-store responses with escaped JSON; static bundles remain cached.
 Cross-site entry falls back to same-origin bootstrap. Inline snapshots never
 resume suspended caches: those use fresh bootstrap with the existing epoch guards.
-For the selected HTML entrypoint, the same authenticated GET prepares fresh
-blocked and compatible contexts, removing the initial create/renew round trip.
-The browser chooses using local consent, checks origin/version/path, and consumes
-the descriptor once. The first valid preview request retires the unused option;
-external access is never prepared. An unavailable, expired or mismatched descriptor
-uses the normal API path. HEAD requests do not allocate contexts.
+For the selected HTML entrypoint, the same authenticated GET can renew an existing
+preview context, keeping its URL while removing the initial renewal round trip.
+A bounded application cookie carries non-authorizing lookup hints; only after
+authentication does the server match artifact/version/entrypoint/origin and return
+renewed restrictive contexts. With no live match it prepares a blocked/compatible
+pair. The browser chooses using local consent, checks origin/version/path, and
+accepts a retained descriptor only for this tab’s exact saved context ID. It
+consumes setup once. First use retires an unused prepared alternative; external
+access is never prepared. Unavailable or mismatched setup uses the normal API
+path. HEAD requests do not allocate or renew contexts.
 SSE ready/reconnect continues to reconcile mutable artifact state in the background.
 Cold visits retain the loading indicator. Definitive failures remove the reading
 view; cached bytes never bypass authorization for server access.
@@ -267,12 +271,14 @@ runtime is embedded in the document response before publisher scripts, removing 
 preview HTML and scripts use negotiated gzip; their validators cover the runtime.
 
 Protected document context identities are retained per tab so reopened previews
-can reuse their URLs during in-app navigation. Eligible full HTML reloads receive
-fresh contexts and different resource URLs, trading preview HTTP-cache reuse for
-one fewer serial request. Older contexts expire normally rather than being
-revoked under another tab. Server capacity stays bounded; failed preparation
-falls back to authenticated renewal of a retained context. The gate repeats unless
-compatibility consent is remembered. External-access and device grants never persist. Deletion clears app content state
+reuse their URLs during in-app navigation and full reloads. Matching resume hints
+fold renewal into application HTML. Missing or evicted hints fall back to API
+renewal of the same saved ID; they never force a new URL. A new independent tab
+creates its own context rather than sharing another tab’s revocation lifetime.
+Contexts still expire and server capacity stays bounded; expired or revoked
+contexts require new URLs. Logout clears the optional hint cookie, which carries
+neither capabilities nor consent. The gate repeats unless compatibility consent
+is remembered. External-access and device grants never persist. Deletion clears app content state
 and context identities when detected, but physical HTTP-cache eviction belongs to
 the browser. See the security reference for expiry and retention bounds.
 

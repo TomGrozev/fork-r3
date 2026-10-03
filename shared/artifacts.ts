@@ -422,6 +422,8 @@ export type ArtifactPreviewNetwork = "blocked" | "compatible" | "external";
 // This temporary URL capability grants one artifact/version without application
 // credentials. Documents have opaque origins, independent of the transport origin.
 export interface ArtifactPreviewContext {
+  // An optional, non-authorizing lookup hint for authenticated HTML navigation.
+  resumeKey?: string;
   id: string;
   artifactId: string;
   versionSeq: number;

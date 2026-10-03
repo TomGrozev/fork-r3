@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PREVIEW_RESUME_COOKIE } from "../shared/preview-resume.ts";
 import type { ApplicationBootstrap } from "../shared/types.ts";
 import { createApplicationResponse } from "./application-assets.ts";
 import { createArtifactApi } from "./artifact-api.ts";
@@ -194,20 +195,50 @@ test("HTML prepares exact-version restrictive contexts after auth, with no exter
   await publish(2);
   const prepared = api.bootstrap(request(`/${artifactId}?version=1`, { cookie }))!.preview!;
   expect(prepared.applicationOrigin).toBe("https://reviews.example");
-  expect(prepared.blocked).toMatchObject({ artifactId, versionSeq: 1, network: "blocked" });
-  expect(prepared.compatible).toMatchObject({ artifactId, versionSeq: 1, network: "compatible" });
-  expect(prepared.blocked.origin).toBe(prepared.applicationOrigin);
-  expect(Object.keys(prepared).sort()).toEqual(["applicationOrigin", "blocked", "compatible"]);
-  expect(prepared.blocked.id).not.toBe(prepared.compatible.id);
+  const [blocked, compatible] = prepared.contexts;
+  expect(blocked).toMatchObject({ artifactId, versionSeq: 1, network: "blocked" });
+  expect(compatible).toMatchObject({ artifactId, versionSeq: 1, network: "compatible" });
+  expect(blocked.origin).toBe(prepared.applicationOrigin);
+  expect(prepared.retained).toBe(false);
+  expect(blocked.id).not.toBe(compatible.id);
   expect(api.bootstrap(request(`/${artifactId}?version=99`, { cookie }))!.preview).toBeNull();
   expect(api.bootstrap(request(`/${artifactId}`, { cookie }, "HEAD"))!.preview).toBeNull();
   expect(api.bootstrap(request(`/${artifactId}`, { cookie, origin: "null" }))).toBeNull();
   expect(api.bootstrap(request(`/${artifactId}`))).toBeNull();
   const local = api.bootstrap(request(`/${artifactId}`, { cookie, origin: "http://localhost" }))!;
   expect(local.preview?.applicationOrigin).toBe("http://localhost");
-  expect(local.preview?.blocked.versionSeq).toBe(2);
+  expect(local.preview?.contexts[0].versionSeq).toBe(2);
   storage.authentication.revokeToken(tokenId);
   expect(api.bootstrap(request(`/${artifactId}`, { cookie }))).toBeNull();
+});
+
+test("authenticated navigation resumes hinted scopes without replacing their URLs", async () => {
+  await publish(1);
+  await publish(2);
+  const headers = { cookie };
+  const selected = api.bootstrap(request(`/${artifactId}?version=1`, headers))!.preview!
+    .contexts[1];
+  const hinted = `${cookie}; ${PREVIEW_RESUME_COOKIE}=${selected.resumeKey}`;
+  const result = api.bootstrap(request(`/${artifactId}?version=1`, { cookie: hinted }))!.preview!;
+  expect(result.retained).toBe(true);
+  expect(result.contexts).toHaveLength(1);
+  expect(result.contexts[0].documentUrl).toBe(selected.documentUrl);
+  expect(result.contexts[0].resourceRoot).toBe(selected.resourceRoot);
+  // The hint cannot authenticate the HTML request or select another version.
+  expect(
+    api.bootstrap(
+      request(`/${artifactId}`, { cookie: `${PREVIEW_RESUME_COOKIE}=${selected.resumeKey}` }),
+    ),
+  ).toBeNull();
+  const newer = api.bootstrap(request(`/${artifactId}?version=2`, { cookie: hinted }))!.preview!;
+  expect(newer.retained).toBe(false);
+  expect(newer.contexts[0].versionSeq).toBe(2);
+  expect(newer.contexts[0].id).not.toBe(selected.id);
+  expect(api.bootstrap(request(`/${artifactId}`, { cookie: hinted, origin: "null" }))).toBeNull();
+  previews.revoke(selected.id);
+  const revoked = api.bootstrap(request(`/${artifactId}?version=1`, { cookie: hinted }))!.preview!;
+  expect(revoked.retained).toBe(false);
+  expect(revoked.contexts.every((context) => context.id !== selected.id)).toBe(true);
 });
 
 test("unavailable optional preview preparation leaves the authenticated workspace usable", async () => {

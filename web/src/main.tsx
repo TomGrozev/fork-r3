@@ -75,11 +75,21 @@ async function main() {
       ["artifact-files", boot.artifact.id, boot.manifest.versionSeq],
       boot.manifest.files,
     );
-  if (boot.preview?.applicationOrigin === location.origin && boot.artifact?.kind === "html") {
-    const context = boot.preview[previewCompatibility.accepted() ? "compatible" : "blocked"];
-    const version = boot.artifact.versions.find((version) => version.seq === context.versionSeq);
-    if (context.artifactId === boot.artifact.id && version?.kind === "html")
-      previewSessions.seed(context, version.entrypoint);
+  if (
+    boot.preview?.applicationOrigin === location.origin &&
+    Array.isArray(boot.preview.contexts) &&
+    boot.artifact?.kind === "html"
+  ) {
+    const network = previewCompatibility.accepted() ? "compatible" : "blocked";
+    for (const context of boot.preview.contexts) {
+      const version = boot.artifact.versions.find((version) => version.seq === context.versionSeq);
+      if (
+        context.network === network &&
+        context.artifactId === boot.artifact.id &&
+        version?.kind === "html"
+      )
+        previewSessions.seed(context, version.entrypoint, boot.preview.retained);
+    }
   }
 
   root.render(

@@ -106,6 +106,34 @@ test("authenticated HTML supplies the first context once; later visits still ren
   );
 });
 
+test("HTML renewal uses only this tab's retained ID and missing hints preserve its URL", async () => {
+  const f = fixture();
+  const firstTab = new PreviewSessions(f.api, () => f.storage);
+  const owned = await firstTab.acquire("artifact_example", 1, "index.html", "compatible");
+  firstTab.release(owned);
+  const other = await f.api.createPreview("artifact_example", 1, "index.html", "compatible");
+  const reload = new PreviewSessions(f.api, () => f.storage);
+  reload.seed(other, "index.html", true);
+  reload.seed(owned, "index.html", true);
+  const reused = await reload.acquire("artifact_example", 1, "index.html", "compatible");
+  expect(reused.id).toBe(owned.id);
+  expect(f.counts().renewed).toBe(0);
+  reload.release(reused);
+  // A missing cookie may produce a fresh seed; prefer renewing the old URL.
+  const missingHint = new PreviewSessions(f.api, () => f.storage);
+  missingHint.seed(other, "index.html");
+  const fallback = await missingHint.acquire("artifact_example", 1, "index.html", "compatible");
+  expect(fallback.documentUrl).toBe(owned.documentUrl);
+  expect(f.counts().renewed).toBe(1);
+  // A new tab must never adopt another tab's live context from the shared hint.
+  const newTab = new PreviewSessions(f.api, () => null);
+  newTab.seed(owned, "index.html", true);
+  const separate = await newTab.acquire("artifact_example", 1, "index.html", "compatible");
+  expect(separate.id).not.toBe(owned.id);
+  newTab.release(separate, false);
+  expect(f.contexts.has(owned.id)).toBe(true);
+});
+
 test("expired or differently scoped HTML contexts never replace the requested acquisition", async () => {
   const f = fixture();
   const context = await f.api.createPreview("artifact_example", 1, "index.html", "blocked");

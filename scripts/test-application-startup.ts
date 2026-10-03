@@ -9,6 +9,7 @@ import { openArtifactStorage } from "../server/artifact-storage.ts";
 import { COOKIE_NAME } from "../server/auth.ts";
 import { PreviewHost } from "../server/preview-host.ts";
 import { previewSupport } from "../server/preview-support.ts";
+import { PREVIEW_RESUME_COOKIE } from "../shared/preview-resume.ts";
 
 // Production SPA, isolated auth/storage, and a fresh browser. The latency is
 // injected before API/preview responses, never attributed to database work.
@@ -68,7 +69,8 @@ let detailHold: Promise<void> | null = null;
 let documentHold: Promise<void> | null = null;
 let documentCaptured = () => {};
 let eventsHold = false;
-const trace: { path: string; at: number; end?: number }[] = [];
+const trace: { path: string; at: number; end?: number; status?: number; conditional?: boolean }[] =
+  [];
 let navigation = 0;
 const app = Bun.serve({
   hostname: "127.0.0.1",
@@ -76,7 +78,13 @@ const app = Bun.serve({
   idleTimeout: 0,
   async fetch(request) {
     const path = new URL(request.url).pathname;
-    const row = { path, at: performance.now() - navigation, end: undefined as number | undefined };
+    const row = {
+      path,
+      at: performance.now() - navigation,
+      end: undefined as number | undefined,
+      status: undefined as number | undefined,
+      conditional: request.headers.has("if-none-match"),
+    };
     trace.push(row);
     if (path === "/controller.js")
       return new Response(controllerBuild.outputs[0], {
@@ -101,6 +109,7 @@ const app = Bun.serve({
       }
     }
     row.end = performance.now() - navigation;
+    row.status = response.status;
     return response;
   },
 });
@@ -141,6 +150,10 @@ try {
     page.locator('iframe[aria-hidden="false"]').first().waitFor({ timeout: 15000 });
   await page.goto(url);
   await ready();
+  const firstPreviewUrl = await page
+    .locator('iframe[aria-hidden="false"]')
+    .first()
+    .getAttribute("src");
   await page.goto("about:blank");
   trace.length = 0;
   navigation = performance.now();
@@ -151,6 +164,11 @@ try {
   eventsHold = true;
   await page.goto(url);
   await ready();
+  assert.equal(
+    await page.locator('iframe[aria-hidden="false"]').first().getAttribute("src"),
+    firstPreviewUrl,
+    "full application navigation preserves the preview URL",
+  );
   const visibleMs = Math.round(performance.now() - navigation);
   assert.equal(
     trace.some((r) => r.path.startsWith("/api/previews/") || r.path.endsWith("/previews")),
@@ -188,6 +206,9 @@ try {
   );
   const check = trace.find((r) => r.path.endsWith("/r3/check"))!;
   const content = trace.find((r) => r.path.endsWith("/files/index.html"))!;
+  // Some browser versions do not retain this opaque document in their cache.
+  // When a validator is sent, renewal must preserve it and avoid the body transfer.
+  assert.equal(content.status, content.conditional ? 304 : 200);
   if (compatible)
     assert.equal(
       trace.some((r) => /\/(?:r3\/(?:gate|check)|outside\/check)$/.test(r.path)),
@@ -213,6 +234,7 @@ try {
   console.log(
     JSON.stringify({
       visibleMs,
+      documentStatus: content.status,
       requestsBeforeVisible: trace.map((r) => ({
         path: r.path
           .replace(/artifact_\w+/g, ":artifact")
@@ -227,6 +249,47 @@ try {
   releaseDetail();
   detailHold = null;
   eventsHold = false;
+  await page.goto("about:blank");
+
+  // Losing an optional hint must never discard this tab's retained URL.
+  await context.clearCookies({ name: PREVIEW_RESUME_COOKIE });
+  trace.length = 0;
+  await page.goto(url);
+  await ready();
+  assert.equal(
+    await page.locator('iframe[aria-hidden="false"]').first().getAttribute("src"),
+    firstPreviewUrl,
+  );
+  assert.ok(
+    trace.some((r) => r.path.startsWith("/api/previews/")),
+    "missing hint renews the retained ID through the API",
+  );
+  await page.goto("about:blank");
+
+  // Shared hints must not make independent tabs share a revocation lifetime.
+  const second = await context.newPage();
+  await second.goto(url);
+  await second.locator('iframe[aria-hidden="false"]').first().waitFor();
+  const secondUrl = await second.locator('iframe[aria-hidden="false"]').first().getAttribute("src");
+  assert.notEqual(secondUrl, firstPreviewUrl);
+  const secondId = new URL(secondUrl!).pathname.split("/")[2];
+  await second.evaluate(async (id: string) => {
+    const response = await fetch(`/api/previews/${id}`, { method: "DELETE" });
+    if (!response.ok) throw new Error("Could not revoke isolated tab context");
+  }, secondId);
+  await second.close();
+  trace.length = 0;
+  await page.goto(url);
+  await ready();
+  assert.equal(
+    await page.locator('iframe[aria-hidden="false"]').first().getAttribute("src"),
+    firstPreviewUrl,
+  );
+  assert.equal(
+    trace.some((r) => r.path.startsWith("/api/previews/") || r.path.endsWith("/previews")),
+    false,
+    "another tab's cleanup leaves inline renewal usable",
+  );
   await page.goto("about:blank");
 
   // A proxy/canonical-origin mismatch must use authenticated setup for this
@@ -326,7 +389,7 @@ try {
     "subsequent same-site opening uses inline bootstrap again",
   );
   console.log(
-    "Application startup: embedded auth/detail/context, zero setup request, origin fallback, deferred SSE, Strict-cookie entry, logout race, and cache resumption passed",
+    "Application startup: stable preview URL and conditional revalidation, zero setup request, missing-hint renewal, independent tabs, origin fallback, Strict-cookie entry, logout race, and cache resumption passed",
   );
 } finally {
   await browser.close();
