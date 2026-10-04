@@ -146,10 +146,10 @@ export function ArtifactComposer({
         {floating && (
           <button
             type="button"
+            tabIndex={-1}
             aria-label="Move composer"
-            title="Drag to move; arrow keys move, Shift moves faster"
+            title="Drag to move"
             onPointerDown={floatingComposer.start}
-            onKeyDown={floatingComposer.key}
             className="flex size-6 shrink-0 touch-none cursor-grab items-center justify-center rounded text-neutral-400 hover:text-neutral-600 focus-visible:outline-2 focus-visible:outline-primary-500 dark:hover:text-neutral-200"
           >
             <StrokeIcon className="size-4">

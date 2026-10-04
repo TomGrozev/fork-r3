@@ -514,16 +514,16 @@ try {
     mobile: false,
   });
   await page.evaluate("document.querySelector('[aria-label=\"Hide feedback\"]').click()");
-  const openComposer = async () => {
+  const openComposer = async (description: string) => {
     await page.evaluate("document.activeElement?.blur()");
     await page.command("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA" });
     await page.command("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA" });
     await eventually(
       () => page.evaluate("!!document.querySelector('[data-floating-composer]')"),
-      "standalone file feedback composer",
+      description,
     );
   };
-  await openComposer();
+  await openComposer("standalone file feedback composer");
   const composer = "document.querySelector('[data-floating-composer]')";
   const composerGeometry = () =>
     page.evaluate<{ x: number; y: number; width: number; height: number }>(
@@ -547,23 +547,6 @@ try {
     composerMoved,
     "Selecting text does not move the card",
   );
-  await page.evaluate("document.querySelector('[aria-label=\"Move composer\"]').focus()");
-  await page.command("Input.dispatchKeyEvent", {
-    type: "keyDown",
-    key: "ArrowRight",
-    code: "ArrowRight",
-    windowsVirtualKeyCode: 39,
-  });
-  await page.command("Input.dispatchKeyEvent", {
-    type: "keyDown",
-    key: "ArrowDown",
-    code: "ArrowDown",
-    windowsVirtualKeyCode: 40,
-    modifiers: 8,
-  });
-  const composerKeyed = await composerGeometry();
-  assert.equal(composerKeyed.x, composerMoved.x + 10, "Grip supports arrow keys");
-  assert.equal(composerKeyed.y, composerMoved.y + 50, "Shift moves the composer faster");
   await drag('[aria-label="Move composer"]', 1600, 1200);
   const composerEdge = await composerGeometry();
   assert.equal(composerEdge.x + composerEdge.width, 1384, "Drag stays inside the right edge");
@@ -589,7 +572,7 @@ try {
   }, "composer stays reachable in a smaller window");
   const targetLabel = await page.evaluate(`${composer}.querySelector('form > div').textContent`);
   await page.evaluate("document.querySelector('[aria-label=\"Close composer\"]').click()");
-  await openComposer();
+  await openComposer("reopened standalone draft");
   assert.equal(
     await page.evaluate(`${composer}.querySelector('textarea').value`),
     grownBody,
@@ -611,7 +594,11 @@ try {
   assert.equal(posted.target.kind, "rendered");
   assert.equal("path" in posted.target && posted.target.path, "index.md");
   assert.equal("locator" in posted.target && posted.target.locator, null);
-  await openComposer();
+  await eventually(
+    () => page.evaluate(`!${composer}`),
+    "posted composer closes before starting another note",
+  );
+  await openComposer("new composer after posting");
   const grip = await page.evaluate<{ x: number; y: number }>(
     "(()=>{const r=document.querySelector('[aria-label=\"Move composer\"]').getBoundingClientRect();return {x:r.x+12,y:r.y+12}})()",
   );
@@ -641,7 +628,7 @@ try {
     clickCount: 1,
   });
   console.log(
-    "Floating composer: drag across previews, keyboard movement, text selection, growth, viewport bounds, retained target/draft, posting and drag cleanup passed.",
+    "Floating composer: drag across previews, text selection, growth, viewport bounds, retained target/draft, posting and drag cleanup passed.",
   );
   rejectDetail = true;
   api.collaboration.broadcast({ type: "artifact-updated", artifactId: artifact.id });

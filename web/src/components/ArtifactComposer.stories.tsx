@@ -210,16 +210,11 @@ export const Floating: Story = {
     const handle = canvas.getByRole("button", { name: "Move composer" });
     const composer = handle.closest("[data-floating-composer]")!;
     const before = composer.getBoundingClientRect();
-    handle.focus();
-    await userEvent.keyboard("{ArrowRight}{Shift>}{ArrowDown}{/Shift}");
-    const after = composer.getBoundingClientRect();
-    await expect(after.left).toBe(before.left + 10);
-    await expect(after.top).toBe(before.top + 50);
     const input = canvas.getByRole("textbox", { name: "Feedback" });
     await userEvent.clear(input);
     await userEvent.type(input, "Keep this note beside the content.");
-    await expect(composer.getBoundingClientRect().left).toBe(after.left);
-    await expect(composer.getBoundingClientRect().top).toBe(after.top);
+    await expect(composer.getBoundingClientRect().left).toBe(before.left);
+    await expect(composer.getBoundingClientRect().top).toBe(before.top);
     await expect(canvas.getByText("View the comparison")).toBeVisible();
   },
 };

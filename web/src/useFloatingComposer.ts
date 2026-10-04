@@ -1,5 +1,4 @@
 import {
-  type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useLayoutEffect,
@@ -102,24 +101,5 @@ export function useFloatingComposer(anchor?: Anchor) {
     window.addEventListener("pointercancel", end);
     handle.addEventListener("lostpointercapture", end);
   };
-  const key = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (
-      !anchor ||
-      !ref.current ||
-      !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key) ||
-      event.altKey ||
-      event.ctrlKey ||
-      event.metaKey
-    )
-      return;
-    event.preventDefault();
-    event.stopPropagation();
-    const origin = ref.current.getBoundingClientRect();
-    const step = event.shiftKey ? 50 : 10;
-    position.current = place({
-      x: origin.x + (event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0),
-      y: origin.y + (event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0),
-    });
-  };
-  return { ref, start, key };
+  return { ref, start };
 }
