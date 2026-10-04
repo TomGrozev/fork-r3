@@ -51,67 +51,61 @@ until all five registrations are updated, publishing can't move to another
 workflow or a self-hosted runner, and a **brand-new** package name (adding a
 platform target) has no trusted publisher yet — its first publish is manual, then
 register `release.yml` on it. Requires npm ≥ 11.5.1, which is why the npm
-jobs upgrade npm and omit setup-node's `registry-url` (its `.npmrc`
+steps upgrade npm and omit setup-node's `registry-url` (its `.npmrc`
 placeholder token would shadow OIDC).
 
-### Five jobs, and the approval gate
+### Three jobs, one approval gate
 
-`release.yml` is **verify → build → publish → publish-platforms →
-publish-launcher**. **Re-run failed jobs** resumes one stage. A successful
-GitHub Release job is not run again.
-
-That split is load-bearing. Immutable releases reject a re-upload, and that
-rejection used to fail the single publish job before its npm steps — the
-retry had been started because npm failed. The upload fallback in `publish`
-only covers a full re-run. An npm retry must not enter `gh release upload`.
+`release.yml` is **verify → build → publish**. The single `publish` job creates
+or reuses the GitHub Release, publishes the four platform packages, waits for
+all exact platform pins to become visible, then publishes the launcher.
+**Re-run failed jobs** repeats this job safely: an existing published release
+and its assets stay untouched, and npm versions already on the registry are
+skipped.
 
 - **`verify`** checks the tag *shape* (plain SemVer — a git ref may contain
   `$( )`, backticks and `;`, so an unvalidated tag reaching a `run:` block is an
   injection vector) and the tag ↔ `npm/package.json` lockstep, then exports the
-  verified version. Seconds, before a runner cross-compiles. A missing
-  `## [X.Y.Z]` changelog section only **warns** — the release degrades to
-  `--generate-notes`, and a prerelease tag legitimately has no section.
-- **`build`** compiles (or, on a re-run, re-downloads and digest-verifies this
-  tag's existing assets), execs the linux-x64 binary as a smoke test, and hands
-  `dist/r3-*` to `publish` as an artifact. It can only read. The npm jobs do
-  not use that artifact.
-- **`publish`** creates the GitHub Release. `contents: write`, no npm credential.
-- **`publish-platforms`** downloads those published assets, stages the four
-  platform packages, and publishes them. `id-token: write`.
-- **`publish-launcher`** downloads the same assets, stages again so the launcher
-  pins come from that staging, waits until every exact pin is visible, then
-  publishes `@hyperlogue/r3`. `id-token: write`.
+  verified version. A missing `## [X.Y.Z]` changelog section only **warns** —
+  the release falls back to `--generate-notes`.
+- **`build`** compiles (or re-downloads and digest-verifies this tag's existing
+  assets), execs the linux-x64 binary as a smoke test, and hands `dist/r3-*` to
+  `publish` as an artifact. It can only read.
+- **`publish`** checks for the GitHub Release before downloading the build
+  artifact. Only a 404 permits creation; other API failures and an unfinished
+  draft stop publication. If the release exists, skip the artifact download,
+  binary check, and creation. Never re-upload assets on a retry: immutable
+  releases reject that write before npm can resume.
 
-Every publication job uses **`environment: release`**. GitHub asks for that
-environment once per job, so a release asks three times. That is required:
-each package's trusted publisher names the `release` environment, so the job
-that runs `npm publish` must too, and folding those publishes into `publish`
-makes an npm retry re-upload the immutable release. Configure the
-environment's required reviewers (GitHub creates it implicitly, so the workflow
-runs ungated until you do) plus a tag ruleset on `v*`. This matters because **a
-tag push bypasses branch protection**: without the gate, anyone with write
-access could tag an arbitrary commit straight into a signed npm publish.
+Only `publish` uses **`environment: release`**, so each attempt requires one
+approval. Each npm package's trusted publisher names that environment and the
+`release.yml` workflow; keep both names. Configure the environment's required
+reviewers (GitHub creates it implicitly, so it runs ungated until configured)
+and a tag ruleset on `v*`. A tag push bypasses branch protection: without the
+gate, anyone with write access could tag an arbitrary commit into an npm publish.
+The workflow defaults to `contents: read`; only the gated job receives
+`contents: write` and `id-token: write`.
 
-The npm jobs stage the **published GitHub assets**, not the workflow artifact,
-so a retry ships those bytes even when a full rerun rebuilt different binaries.
-An npm version already on the registry is skipped.
+npm packages always stage the **published GitHub assets**, including on the
+first attempt. Clear the downloaded build binaries before fetching those assets,
+so a missing release asset cannot be silently supplied by a different build.
+Stage once to produce all four packages and the launcher's exact pins. Keep
+platform publication, registry visibility, and launcher publication in that order.
 
 `scripts/wait-for-npm-packages.sh` gives the launcher one ten-minute deadline
 for every exact platform pin. Each poll revalidates npm metadata
 (`--prefer-online`) and bounds the registry request, so a stall cannot outlive
-the deadline. The old per-package 30×5s loop was shorter than registry lag.
-Run `bun test scripts/wait-for-npm-packages.test.mjs` when changing that
-wait. CI runs the same command. A bare `bun test` does not discover `.mjs`.
+the deadline. Run `bun test scripts/wait-for-npm-packages.test.mjs` when changing
+that wait; a bare `bun test` does not discover `.mjs`. The workflow retry checks
+in `scripts/release-workflow.test.ts` exercise publication with fake GitHub and
+npm commands. CI runs both suites without publishing.
 
-Two consequences worth keeping: the workflow-level default is `contents: read`
-(only `publish` raises it; only the npm jobs hold `id-token: write`), and **no
-publication job execs a release binary**. `publish-platforms` only stats the
-staged exec bit. `build` already ran the one natively-runnable target, and
-exec'ing an unverified artifact in a job that can mint a publish credential
-would let a poisoned binary rewrite the other platform packages first. The
-build artifact's `retention-days: 7` bounds how long the first approval may
+**The publish job never execs a release binary.** It only stats staged exec bits;
+`build` already ran the natively-runnable target. Executing an unverified binary
+with publish credentials could let it rewrite the other platform packages.
+The build artifact's `retention-days: 7` bounds how long initial approval may
 idle. Past that, re-run the workflow so `build` can compile again. Once the
-GitHub Release exists, an npm retry does not need the artifact.
+GitHub Release exists, npm retries skip that artifact and work after it expires.
 
 ## `package.json` overrides `bun` → `empty-npm-package`
 
