@@ -5,6 +5,10 @@ conversations**. A per-user daemon owns immutable content and persisted feedback
 the browser, CLI, and agents use the same HTTP/JSON contract. The daemon, CLI, and
 SPA ship as one self-contained binary. Read [README.md](README.md) for usage.
 
+Write README.md for human readers evaluating and getting started with r3. Keep
+agent instructions, protocol semantics, and exhaustive feature details in the
+agent guide or reference documentation.
+
 This file, the [artifact design](docs/artifacts/design.md),
 [schema explanation](docs/artifacts/schema.md), and the deep-reference skills below
 are the design source of truth. Update the document that owns a decision when it

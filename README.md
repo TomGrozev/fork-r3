@@ -53,31 +53,6 @@ Ask your agent to run `r3 guide` and publish an artifact. The guide explains how
 to publish, listen for feedback, and reply. Open the artifact URL from your agent, or visit
 `http://127.0.0.1:8791/` for the full list.
 
-Local Claude Code and Codex publications set up feedback delivery automatically,
-so you can send feedback from the artifact page. When no agent is listening, click
-**Use in agent** to copy `r3 feedback fetch <artifact-id>`. Run it with `!` in your
-agent harness to load new feedback and replies into context. Fetching acknowledges
-the snapshot only after stdout succeeds, then registers supported agents as listeners
-for future updates. A failed read or output leaves feedback pending; an acknowledgment
-failure can repeat already printed feedback on retry. `--all` reads history without
-acknowledging it or registering a listener.
-
-Paste or attach images to notes and replies, including messages without text.
-For HTML artifacts, the **Capture area** camera icon beside Comment mode in the
-navbar shares the current tab, freezes the preview,
-and lets you crop a screenshot before attaching it. **Edit image** adds pen, arrow,
-and rectangle drawings with color, stroke width, and undo/redo controls.
-**Optimize image** also offers PNG resizing with the exact output preview,
-dimensions, file size, and an actual-pixels view before you accept it. Oversized
-PNG conversions open this preview automatically; no resizing happens without acceptance.
-Where browser capture is unavailable, the icon is hidden; paste or upload a screenshot instead.
-Attaching an image inserts a spaced `[image1]` reference in the message; pasting
-places it at the cursor. Labels match the thumbnails and agent output and
-renumber when an earlier image is removed. Messages accept up to four images,
-each at most 5 MiB and 20 megapixels. Agents can use
-`r3 feedback fetch <artifact-id> --attachments-dir ./feedback-images` to save
-images before acknowledging feedback.
-
 ## Artifact types
 
 r3 supports three kinds of artifacts:
