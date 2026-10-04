@@ -205,5 +205,22 @@ export const RetiredDescriptionDraft: Story = {
 export const Floating: Story = {
   ...RenderedTarget,
   args: { floating: { left: 360, top: 140, bottom: 164, onClose: () => {} } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement.ownerDocument.body);
+    const handle = canvas.getByRole("button", { name: "Move composer" });
+    const composer = handle.closest("[data-floating-composer]")!;
+    const before = composer.getBoundingClientRect();
+    handle.focus();
+    await userEvent.keyboard("{ArrowRight}{Shift>}{ArrowDown}{/Shift}");
+    const after = composer.getBoundingClientRect();
+    await expect(after.left).toBe(before.left + 10);
+    await expect(after.top).toBe(before.top + 50);
+    const input = canvas.getByRole("textbox", { name: "Feedback" });
+    await userEvent.clear(input);
+    await userEvent.type(input, "Keep this note beside the content.");
+    await expect(composer.getBoundingClientRect().left).toBe(after.left);
+    await expect(composer.getBoundingClientRect().top).toBe(after.top);
+    await expect(canvas.getByText("View the comparison")).toBeVisible();
+  },
 };
 export const FloatingDark: Story = { ...Floating, globals: { theme: "dark" } };

@@ -533,6 +533,11 @@ In a focused editor, Escape cancels an empty note or blurs a populated one witho
 losing text. Outside the editor, Escape hides a visible desktop feedback panel;
 when the panel is hidden, it cancels an empty standalone note.
 Scrolling or collapsing the selection dismisses transient quote actions, not drafts.
+The standalone desktop composer has a move grip: drag it, or focus it and use
+arrow keys (10 px, or 50 px with Shift). Its chosen position lasts while the
+composer is open, independently of the draft's target and text. The card stays
+within the viewport when moved, when its contents grow, and when the window
+resizes; a new opening starts beside the selected content again.
 An empty note can retarget; a populated note offers **Quote in note**. Selection in
 an agent message offers **Quote in reply** only for that message's own thread.
 On coarse pointers, selection first offers **Add feedback**, or **Quote in note**

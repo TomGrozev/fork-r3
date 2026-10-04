@@ -507,6 +507,142 @@ try {
   console.log(
     "Floating feedback: drag across an opaque frame, resize, independent docking, hide/show, reload, viewport clamping and keyboard resizing passed.",
   );
+  await page.command("Emulation.setDeviceMetricsOverride", {
+    width: 1400,
+    height: 1000,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await page.evaluate("document.querySelector('[aria-label=\"Hide feedback\"]').click()");
+  const openComposer = async () => {
+    await page.evaluate("document.activeElement?.blur()");
+    await page.command("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA" });
+    await page.command("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA" });
+    await eventually(
+      () => page.evaluate("!!document.querySelector('[data-floating-composer]')"),
+      "standalone file feedback composer",
+    );
+  };
+  await openComposer();
+  const composer = "document.querySelector('[data-floating-composer]')";
+  const composerGeometry = () =>
+    page.evaluate<{ x: number; y: number; width: number; height: number }>(
+      `${composer}.getBoundingClientRect().toJSON()`,
+    );
+  const composerStart = await composerGeometry();
+  await page.evaluate(
+    `${panel}.previousElementSibling.insertAdjacentHTML('beforeend', '<iframe sandbox="allow-scripts" srcdoc="<p>Preview</p>" style="position:absolute;inset:0;width:45%;height:100%;border:0"></iframe>')`,
+  );
+  await drag('[aria-label="Move composer"]', -300, -200);
+  const composerMoved = await composerGeometry();
+  assert.equal(composerMoved.x, composerStart.x - 300, "Composer moves across an opaque frame");
+  assert.equal(composerMoved.y, composerStart.y - 200, "Composer moves vertically");
+  assert.equal(await page.evaluate("document.body.style.cursor"), "", "Drag release cleans up");
+  await page.evaluate(`${composer}.querySelector('textarea').focus()`);
+  await page.command("Input.insertText", { text: "A movable note" });
+  assert.deepEqual(await composerGeometry(), composerMoved, "Typing preserves the chosen position");
+  await drag("[data-floating-composer] textarea", 40, 20);
+  assert.deepEqual(
+    await composerGeometry(),
+    composerMoved,
+    "Selecting text does not move the card",
+  );
+  await page.evaluate("document.querySelector('[aria-label=\"Move composer\"]').focus()");
+  await page.command("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "ArrowRight",
+    code: "ArrowRight",
+    windowsVirtualKeyCode: 39,
+  });
+  await page.command("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "ArrowDown",
+    code: "ArrowDown",
+    windowsVirtualKeyCode: 40,
+    modifiers: 8,
+  });
+  const composerKeyed = await composerGeometry();
+  assert.equal(composerKeyed.x, composerMoved.x + 10, "Grip supports arrow keys");
+  assert.equal(composerKeyed.y, composerMoved.y + 50, "Shift moves the composer faster");
+  await drag('[aria-label="Move composer"]', 1600, 1200);
+  const composerEdge = await composerGeometry();
+  assert.equal(composerEdge.x + composerEdge.width, 1384, "Drag stays inside the right edge");
+  assert.equal(composerEdge.y + composerEdge.height, 984, "Drag stays inside the bottom edge");
+  await page.evaluate(`${composer}.querySelector('textarea').focus()`);
+  const grownBody = `A movable note${"\nMore context".repeat(10)}`;
+  await page.command("Input.insertText", { text: "\nMore context".repeat(10) });
+  await eventually(async () => {
+    const rect = await composerGeometry();
+    return rect.height > composerEdge.height && rect.y + rect.height <= 984;
+  }, "a growing note stays inside the viewport");
+  await page.command("Emulation.setDeviceMetricsOverride", {
+    width: 900,
+    height: 600,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await eventually(async () => {
+    const rect = await composerGeometry();
+    return (
+      rect.x >= 16 && rect.y >= 16 && rect.x + rect.width <= 884 && rect.y + rect.height <= 584
+    );
+  }, "composer stays reachable in a smaller window");
+  const targetLabel = await page.evaluate(`${composer}.querySelector('form > div').textContent`);
+  await page.evaluate("document.querySelector('[aria-label=\"Close composer\"]').click()");
+  await openComposer();
+  assert.equal(
+    await page.evaluate(`${composer}.querySelector('textarea').value`),
+    grownBody,
+    "Closing and reopening preserves the draft",
+  );
+  assert.equal(
+    await page.evaluate(`${composer}.querySelector('form > div').textContent`),
+    targetLabel,
+    "Moving and reopening preserves the target",
+  );
+  const reopenedComposer = await composerGeometry();
+  assert.equal(reopenedComposer.x, 230, "Reopening positions beside the anchor again");
+  await page.evaluate(`${composer}.querySelector('button[type=submit]').click()`);
+  await eventually(
+    async () => storage.conversations.list(artifact.id).some((note) => note.body === grownBody),
+    "moved feedback posts successfully",
+  );
+  const posted = storage.conversations.list(artifact.id).find((note) => note.body === grownBody)!;
+  assert.equal(posted.target.kind, "rendered");
+  assert.equal("path" in posted.target && posted.target.path, "index.md");
+  assert.equal("locator" in posted.target && posted.target.locator, null);
+  await openComposer();
+  const grip = await page.evaluate<{ x: number; y: number }>(
+    "(()=>{const r=document.querySelector('[aria-label=\"Move composer\"]').getBoundingClientRect();return {x:r.x+12,y:r.y+12}})()",
+  );
+  await page.command("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    ...grip,
+    button: "left",
+    buttons: 1,
+    clickCount: 1,
+  });
+  await page.evaluate("document.querySelector('[aria-label=\"Close composer\"]').click()");
+  assert.equal(
+    await page.evaluate("document.body.style.cursor"),
+    "",
+    "Closing during drag cleans up",
+  );
+  assert.equal(
+    await page.evaluate("document.body.style.userSelect"),
+    "",
+    "Closing restores selection",
+  );
+  await page.command("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    ...grip,
+    button: "left",
+    buttons: 0,
+    clickCount: 1,
+  });
+  console.log(
+    "Floating composer: drag across previews, keyboard movement, text selection, growth, viewport bounds, retained target/draft, posting and drag cleanup passed.",
+  );
   rejectDetail = true;
   api.collaboration.broadcast({ type: "artifact-updated", artifactId: artifact.id });
   await eventually(async () => failedDetailReads > 0, "failed background detail refresh");

@@ -9,7 +9,8 @@ import { type ArtifactDraft, artifactDrafts, useArtifactDraft } from "../artifac
 import { withSavedReply } from "../artifact-feedback.ts";
 import { FeedbackCreationContext, prepareFeedbackMorph } from "../feedback-motion.ts";
 import { type ImageInsertion, imageMessageBody } from "../image-placeholders.ts";
-import { Button, cn } from "../ui.tsx";
+import { Button, cn, StrokeIcon } from "../ui.tsx";
+import { useFloatingComposer } from "../useFloatingComposer.ts";
 import {
   type EditableImage,
   editableImageInputs,
@@ -37,6 +38,7 @@ export function ArtifactComposer({
     (draft?.target.kind === "version_summary" || draft?.target.kind === "artifact_summary");
   const formElement = useRef<HTMLFormElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const floatingComposer = useFloatingComposer(floating);
   const qc = useQueryClient();
   const showCreated = useContext(FeedbackCreationContext);
   const post = useMutation({
@@ -141,13 +143,40 @@ export function ArtifactComposer({
       }}
     >
       <div className="flex items-start justify-between gap-2 px-3 text-xs text-neutral-500">
-        <span>
+        {floating && (
+          <button
+            type="button"
+            aria-label="Move composer"
+            title="Drag to move; arrow keys move, Shift moves faster"
+            onPointerDown={floatingComposer.start}
+            onKeyDown={floatingComposer.key}
+            className="flex size-6 shrink-0 touch-none cursor-grab items-center justify-center rounded text-neutral-400 hover:text-neutral-600 focus-visible:outline-2 focus-visible:outline-primary-500 dark:hover:text-neutral-200"
+          >
+            <StrokeIcon className="size-4">
+              <path
+                d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+            </StrokeIcon>
+          </button>
+        )}
+        <span className={cn(floating && "min-w-0 flex-1 break-words pt-1")}>
           {replyTo
             ? context?.versionSeq
               ? `Reply about version ${context.versionSeq}${context.representation ? ` · ${context.representation}` : ""}`
               : "Reply without a published context"
             : artifactTargetLabel(draft?.target ?? { kind: "artifact" })}
         </span>
+        {!replyTo && draft?.target.kind !== "artifact" && draft?.target && (
+          <button
+            type="button"
+            className={cn("shrink-0 underline", floating && "pt-1")}
+            onClick={() => artifactDrafts.update(artifactId, { target: { kind: "artifact" } })}
+          >
+            Clear target
+          </button>
+        )}
         {floating && (
           <Button
             type="button"
@@ -157,15 +186,6 @@ export function ArtifactComposer({
           >
             ×
           </Button>
-        )}
-        {!replyTo && draft?.target.kind !== "artifact" && draft?.target && (
-          <button
-            type="button"
-            className="shrink-0 underline"
-            onClick={() => artifactDrafts.update(artifactId, { target: { kind: "artifact" } })}
-          >
-            Clear target
-          </button>
         )}
       </div>
       {draft?.imported && (
@@ -256,18 +276,12 @@ export function ArtifactComposer({
     </form>
   );
   if (!floating) return form;
-  const width = Math.min(440, window.innerWidth - 32);
-  const above = floating.bottom > window.innerHeight / 2;
   return createPortal(
     <div
+      ref={floatingComposer.ref}
+      data-floating-composer
       className="fixed z-50 max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-lg border border-neutral-300 bg-white r3-floating will-change-transform dark:border-neutral-700 dark:bg-neutral-950"
-      style={{
-        width,
-        left: Math.max(16, Math.min(window.innerWidth - width - 16, floating.left - width / 2)),
-        ...(above
-          ? { bottom: Math.max(16, window.innerHeight - floating.top + 8) }
-          : { top: Math.max(16, floating.bottom + 8) }),
-      }}
+      style={{ width: "min(440px, calc(100vw - 2rem))" }}
     >
       {form}
     </div>,
